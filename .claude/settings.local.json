@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker *)",
+      "Bash(redis-cli --version)",
+      "Bash(redis-server --version)",
+      "Bash(curl -s http://localhost:9091/healthz)",
+      "Bash(.\\\\.tools\\\\apache-maven-3.9.9\\\\bin\\\\mvn.cmd -q -f backend\\\\pom.xml test)",
+      "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -q -f backend/pom.xml test)",
+      "Bash(npx vite *)",
+      "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -q -f backend/pom.xml compile)",
+      "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -f backend/pom.xml test -DfailIfNoTests=false)"
+    ]
+  }
+}

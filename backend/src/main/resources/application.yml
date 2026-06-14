@@ -1,0 +1,71 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    import: optional:file:../.env[.properties]
+  application:
+    name: zyagent
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:zyagent}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: never
+      encoding: UTF-8
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  ai:
+    mcp:
+      server:
+        enabled: ${ZYAGENT_MCP_ENABLED:true}
+        name: zyagent-mcp-server
+        version: 0.1.0
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:zyagent-not-configured}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_CHAT_MODEL:deepseek-v4-pro}
+          temperature: 0.3
+
+zyagent:
+  milvus:
+    host: ${MILVUS_HOST:localhost}
+    port: ${MILVUS_PORT:19530}
+    collection: ${MILVUS_COLLECTION:zyagent_documents}
+  embedding:
+    provider: ${EMBEDDING_PROVIDER:hash}
+    api-key: ${EMBEDDING_API_KEY:}
+    base-url: ${EMBEDDING_BASE_URL:}
+    model: ${EMBEDDING_MODEL:text-embedding-v3}
+    dimension: ${EMBEDDING_DIMENSION:128}
+  job-collect:
+    enabled: ${JOB_COLLECT_ENABLED:true}
+    cron: ${JOB_COLLECT_CRON:0 0 8 * * ?}
+    timeout-seconds: ${JOB_COLLECT_TIMEOUT_SECONDS:8}
+    max-pages-per-source: ${JOB_COLLECT_MAX_PAGES_PER_SOURCE:3}
+    keywords: ${JOB_COLLECT_KEYWORDS:Java,后端,Spring Boot,Redis,MySQL,校招,实习,agent,大模型}
+  boss-collect:
+    enabled: ${BOSS_COLLECT_ENABLED:true}
+    city: ${BOSS_COLLECT_CITY:北京}
+    keywords: ${BOSS_COLLECT_KEYWORDS:Java 后端 实习,AI Agent 后端 实习}
+    max-pages: ${BOSS_COLLECT_MAX_PAGES:3}
+    max-jobs: ${BOSS_COLLECT_MAX_JOBS:60}
+    profile-dir: ${BOSS_BROWSER_PROFILE_DIR:./data/browser/boss-profile}
+    headless: ${BOSS_BROWSER_HEADLESS:false}
+  upload:
+    directory: ${ZYAGENT_UPLOAD_DIR:./data/uploads}
+  chat:
+    memory:
+      max-messages: ${CHAT_MEMORY_MAX_MESSAGES:6}
+  agent:
+    replan-max-attempts: ${AGENT_REPLAN_MAX_ATTEMPTS:1}
+  mcp:
+    enabled: ${ZYAGENT_MCP_ENABLED:true}
+  structured-output:
+    enabled: ${STRUCTURED_OUTPUT_ENABLED:true}
