@@ -73,3 +73,92 @@ test('streamChat dispatches references events', async () => {
     globalThis.fetch = originalFetch
   }
 })
+
+test('streamChat dispatches route usage metrics and memory events', async () => {
+  const originalFetch = globalThis.fetch
+  const encoder = new TextEncoder()
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode([
+          'event: route',
+          'data: {"category":"JOB","skillId":"job_analysis_skill","reason":"命中岗位"}',
+          '',
+          'event: usage',
+          'data: {"promptTokens":10,"completionTokens":5,"totalTokens":15,"estimated":true}',
+          '',
+          'event: metrics',
+          'data: {"toolTotal":2,"toolSuccess":1,"toolFailed":1,"ragHitCount":3}',
+          '',
+          'event: memory',
+          'data: {"recentMessageCount":2,"summary":"最近对话上下文"}',
+          '',
+          ''
+        ].join('\n')))
+        controller.close()
+      }
+    })
+  })
+
+  try {
+    const received = {}
+    const stream = await streamChat({ message: 'test' }, {
+      onRoute: route => {
+        received.route = route
+      },
+      onUsage: usage => {
+        received.usage = usage
+      },
+      onMetrics: metrics => {
+        received.metrics = metrics
+      },
+      onMemory: memory => {
+        received.memory = memory
+      }
+    })
+    await stream.done
+
+    assert.equal(received.route.skillId, 'job_analysis_skill')
+    assert.equal(received.usage.totalTokens, 15)
+    assert.equal(received.metrics.ragHitCount, 3)
+    assert.equal(received.memory.recentMessageCount, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('streamChat dispatches collaboration events', async () => {
+  const originalFetch = globalThis.fetch
+  const encoder = new TextEncoder()
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode([
+          'event: collaboration',
+          'data: {"agents":[{"role":"PLANNER","status":"SUCCESS"}],"artifacts":[{"producer":"PLANNER","type":"plan"}],"finalReview":"回答需要引用中间结果"}',
+          '',
+          ''
+        ].join('\n')))
+        controller.close()
+      }
+    })
+  })
+
+  try {
+    let received = null
+    const stream = await streamChat({ message: 'test' }, {
+      onCollaboration: collaboration => {
+        received = collaboration
+      }
+    })
+    await stream.done
+
+    assert.equal(received.agents[0].role, 'PLANNER')
+    assert.equal(received.artifacts[0].type, 'plan')
+    assert.equal(received.finalReview, '回答需要引用中间结果')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

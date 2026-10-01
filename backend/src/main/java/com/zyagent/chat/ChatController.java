@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zyagent.agent.AgentMode;
 import com.zyagent.agent.AgentOrchestrator;
 import com.zyagent.agent.AgentResult;
+import com.zyagent.agent.TokenUsage;
 import com.zyagent.common.ApiResponse;
 import com.zyagent.storage.ChatMessageView;
 import com.zyagent.storage.ChatRepository;
@@ -105,7 +106,7 @@ public class ChatController {
         saveUserMessage(sessionId, request.message());
         AgentResult result = orchestrator.execute(request.agentMode(), request.message(), sessionId);
         saveTools(sessionId, result.skill().id(), result.toolResults());
-        saveAssistantMessage(sessionId, result.answer(), result.skill().id(), result.references());
+        saveAssistantMessage(sessionId, result.answer(), result);
         return ApiResponse.ok(result);
     }
 
@@ -120,8 +121,12 @@ public class ChatController {
                 AgentOrchestrator.AgentRun run = orchestrator.prepare(request.agentMode(), request.message(), sessionId);
                 saveTools(sessionId, run.skill().id(), run.toolResults());
                 emitter.send(SseEmitter.event().name("skill").data(run.skill()));
+                emitter.send(SseEmitter.event().name("route").data(run.routeDecision()));
                 emitter.send(SseEmitter.event().name("plan").data(run.plan()));
                 emitter.send(SseEmitter.event().name("tools").data(run.toolResults()));
+                emitter.send(SseEmitter.event().name("metrics").data(run.metrics()));
+                emitter.send(SseEmitter.event().name("memory").data(run.memorySnapshot()));
+                emitter.send(SseEmitter.event().name("collaboration").data(run.collaborationTrace()));
                 if (run.references() != null) {
                     emitter.send(SseEmitter.event().name("references").data(run.references()));
                 }
@@ -133,7 +138,9 @@ public class ChatController {
                         throw new IllegalStateException(ex);
                     }
                 });
-                saveAssistantMessage(sessionId, answer.toString(), run.skill().id(), run.references());
+                TokenUsage usage = orchestrator.estimateUsage(run, request.message(), sessionId, answer.toString());
+                emitter.send(SseEmitter.event().name("usage").data(usage));
+                saveAssistantMessage(sessionId, answer.toString(), run, usage);
                 emitter.complete();
             } catch (RuntimeException | IOException ex) {
                 if (!answer.isEmpty()) {
@@ -172,11 +179,42 @@ public class ChatController {
         }
     }
 
+    private void saveAssistantMessage(String sessionId, String message, AgentResult result) {
+        saveAssistantMessage(sessionId, message, result.skill().id(), result.references(), result.routeDecision(), result.plan(), result.toolResults(), result.runMetrics(), result.tokenUsage(), result.memorySnapshot(), result.collaborationTrace());
+    }
+
     private void saveAssistantMessage(String sessionId, String message, String skillId, Object references) {
+        saveAssistantMessage(sessionId, message, skillId, references, null, null, List.of(), null, null, null, null);
+    }
+
+    private void saveAssistantMessage(String sessionId, String message, AgentOrchestrator.AgentRun run, TokenUsage usage) {
+        saveAssistantMessage(sessionId, message, run.skill().id(), run.references(), run.routeDecision(), run.plan(), run.toolResults(), run.metrics(), usage, run.memorySnapshot(), run.collaborationTrace());
+    }
+
+    private void saveAssistantMessage(
+        String sessionId,
+        String message,
+        String skillId,
+        Object references,
+        Object route,
+        Object plan,
+        Object tools,
+        Object metrics,
+        Object usage,
+        Object memory,
+        Object collaboration
+    ) {
         if (chatRepository != null) {
             try {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("skill", skillId);
+                payload.put("route", route);
+                payload.put("plan", plan);
+                payload.put("tools", tools);
+                payload.put("metrics", metrics);
+                payload.put("usage", usage);
+                payload.put("memory", memory);
+                payload.put("collaboration", collaboration);
                 if (references != null) {
                     payload.put("references", references);
                 }

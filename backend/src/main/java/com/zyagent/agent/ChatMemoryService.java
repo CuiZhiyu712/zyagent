@@ -19,13 +19,17 @@ public class ChatMemoryService {
     }
 
     public String render(String sessionId) {
+        return snapshot(sessionId).summary();
+    }
+
+    public ChatMemorySnapshot snapshot(String sessionId) {
         if (chatRepository == null || sessionId == null || sessionId.isBlank()) {
-            return "";
+            return ChatMemorySnapshot.empty();
         }
         try {
-            return context.render(chatRepository.listMessages(sessionId));
+            return context.snapshot(chatRepository.listMessages(sessionId));
         } catch (RuntimeException ex) {
-            return "";
+            return ChatMemorySnapshot.empty();
         }
     }
 }

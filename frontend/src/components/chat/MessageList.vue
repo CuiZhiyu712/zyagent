@@ -15,7 +15,15 @@
       <div class="avatar">{{ message.role === 'user' ? '你' : 'ZY' }}</div>
       <div class="message-bubble">
         <ToolTrace v-if="message.role === 'assistant'" :skill="message.skill" :plan="message.plan" :tools="message.tools" />
+        <CollaborationTrace v-if="message.role === 'assistant'" :collaboration="message.collaboration" />
         <ReferenceTrace v-if="message.role === 'assistant'" :references="message.references" />
+        <ObservabilityTrace
+          v-if="message.role === 'assistant'"
+          :route="message.route"
+          :usage="message.usage"
+          :metrics="message.metrics"
+          :memory="message.memory"
+        />
         <div v-if="message.kind === 'upload'" class="upload-card">
           <div class="upload-card-head">
             <span class="file-icon">DOC</span>
@@ -47,7 +55,10 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue'
 import ToolTrace from './ToolTrace.vue'
+import CollaborationTrace from './CollaborationTrace.vue'
 import ReferenceTrace from './ReferenceTrace.vue'
+import ObservabilityTrace from './ObservabilityTrace.vue'
+import { renderMarkdown } from '../../chat/markdownRenderer'
 
 defineEmits(['pickPrompt'])
 
@@ -85,20 +96,4 @@ function handleScroll() {
   shouldStick.value = el.scrollHeight - el.scrollTop - el.clientHeight < 96
 }
 
-function renderMarkdown(text) {
-  return escapeHtml(text)
-    .replace(/```([\s\S]*?)```/g, '<pre class="code-block"><code>$1</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>')
-}
-
-function escapeHtml(value) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 </script>

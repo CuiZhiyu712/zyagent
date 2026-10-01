@@ -5,5 +5,7 @@ public enum AgentStepStatus {
     RUNNING,
     SUCCESS,
     FAILED,
+    RETRYING,
+    SKIPPED,
     REPLANNED
 }

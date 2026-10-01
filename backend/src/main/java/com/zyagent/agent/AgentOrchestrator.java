@@ -25,6 +25,7 @@ public class AgentOrchestrator {
     private final ChatMemoryService chatMemoryService;
     private final PromptAdvisorChain advisors;
     private final int replanMaxAttempts;
+    private final MultiAgentCoordinator multiAgentCoordinator = new MultiAgentCoordinator();
     private final ToolRegistry toolRegistry = new ToolRegistry();
 
     public AgentOrchestrator(
@@ -50,8 +51,20 @@ public class AgentOrchestrator {
 
     public AgentResult execute(AgentMode mode, String message, String sessionId) {
         AgentRun run = prepare(mode, message, sessionId);
-        String answer = aiChatService.complete(run.skill().mode().prompt(), advisedPrompt(message, sessionId, run.toolResults()));
-        return new AgentResult(run.skill().mode(), run.skill(), run.plan(), run.toolResults(), run.references(), answer);
+        String answer = aiChatService.complete(run.skill().mode().prompt(), advisedPrompt(message, sessionId, run.toolResults(), run.collaborationTrace()));
+        return new AgentResult(
+            run.skill().mode(),
+            run.skill(),
+            run.plan(),
+            run.toolResults(),
+            run.references(),
+            answer,
+            run.routeDecision(),
+            estimateUsage(run, message, sessionId, answer),
+            run.metrics(),
+            run.memorySnapshot(),
+            run.collaborationTrace()
+        );
     }
 
     public AgentRun prepare(AgentMode mode, String message) {
@@ -59,9 +72,14 @@ public class AgentOrchestrator {
     }
 
     public AgentRun prepare(AgentMode mode, String message, String sessionId) {
+        AgentRouteDecision routeDecision = skillRouter.routeDecision(mode, message);
         SkillDefinition skill = skillRouter.route(mode, message);
+        ChatMemorySnapshot memorySnapshot = chatMemoryService.snapshot(sessionId);
         AgentExecution execution = react(skill, message);
-        return new AgentRun(skill, new AgentPlan(skill.mode(), execution.steps()), execution.toolResults(), referencesFrom(execution.toolResults()));
+        DocumentSearchResponse references = referencesFrom(execution.toolResults());
+        AgentRunMetrics metrics = AgentRunMetrics.from(execution.toolResults(), references, execution.retryCount());
+        CollaborationTrace collaborationTrace = multiAgentCoordinator.coordinate(routeDecision, skill, message, memorySnapshot, execution.toolResults(), references);
+        return new AgentRun(skill, routeDecision, new AgentPlan(skill.mode(), execution.steps()), execution.toolResults(), references, metrics, memorySnapshot, collaborationTrace);
     }
 
     public void streamAnswer(AgentRun run, String message, TokenHandler handler) {
@@ -69,7 +87,12 @@ public class AgentOrchestrator {
     }
 
     public void streamAnswer(AgentRun run, String message, String sessionId, TokenHandler handler) {
-        aiChatService.stream(run.skill().mode().prompt(), advisedPrompt(message, sessionId, run.toolResults()), handler);
+        aiChatService.stream(run.skill().mode().prompt(), advisedPrompt(message, sessionId, run.toolResults(), run.collaborationTrace()), handler);
+    }
+
+    public TokenUsage estimateUsage(AgentRun run, String message, String sessionId, String answer) {
+        String prompt = run.skill().mode().prompt() + "\n" + advisedPrompt(message, sessionId, run.toolResults(), run.collaborationTrace());
+        return TokenEstimator.estimate(prompt, answer);
     }
 
     public ToolRegistry toolRegistry() {
@@ -79,11 +102,13 @@ public class AgentOrchestrator {
     private AgentExecution react(SkillDefinition skill, String message) {
         List<ToolResult> results = new ArrayList<>();
         List<AgentPlanStep> steps = new ArrayList<>();
+        int retryCount = 0;
         for (int index = 0; index < skill.planSteps().size(); index++) {
             String toolName = index < skill.toolNames().size() ? skill.toolNames().get(index) : null;
-            AgentPlanStep planned = AgentPlanStep.planned(skill.planSteps().get(index), toolName);
+            AgentPlanStep planned = AgentPlanStep.planned(skill.planSteps().get(index), toolName)
+                .withInputSummary(summarize(message));
             if (toolName == null || "match_resume_job".equals(toolName)) {
-                steps.add(planned.success(0L));
+                steps.add(planned.skipped("该步骤由最终回答综合完成"));
                 continue;
             }
             long started = System.nanoTime();
@@ -91,14 +116,16 @@ public class AgentOrchestrator {
             ToolResult result = executeTool(toolName, message);
             results.add(result);
             long durationMs = Math.max(1L, (System.nanoTime() - started) / 1_000_000L);
+            String outputSummary = result.success() ? summarize(String.valueOf(result.output())) : result.errorMessage();
             steps.set(steps.size() - 1, result.success()
-                ? planned.success(durationMs)
-                : planned.failed(result.errorMessage(), durationMs));
+                ? planned.withOutputSummary(outputSummary).success(durationMs)
+                : planned.withOutputSummary(outputSummary).failed(result.errorMessage(), durationMs));
             if (!result.success() && replanMaxAttempts > 0) {
+                retryCount++;
                 steps.add(AgentPlanStep.planned("根据工具失败结果调整回答策略", null).replanned(result.errorMessage()));
             }
         }
-        return new AgentExecution(steps, results);
+        return new AgentExecution(steps, results, retryCount);
     }
 
     private ToolResult executeTool(String toolName, String message) {
@@ -126,6 +153,20 @@ public class AgentOrchestrator {
         return advisors.render(message, chatMemoryService.render(sessionId), toolResults);
     }
 
+    private String advisedPrompt(String message, String sessionId, List<ToolResult> toolResults, CollaborationTrace collaborationTrace) {
+        String base = advisedPrompt(message, sessionId, toolResults);
+        if (collaborationTrace == null || collaborationTrace.agents().isEmpty()) {
+            return base;
+        }
+        String artifacts = collaborationTrace.artifacts().stream()
+            .map(artifact -> "- " + artifact.producer() + "/" + artifact.type() + ": " + artifact.summary())
+            .reduce("", (left, right) -> left + right + "\n");
+        return base + "\n\n多 Agent 协作中间结果：\n"
+            + artifacts
+            + "Reviewer 复核结论：" + collaborationTrace.finalReview() + "\n"
+            + "最终回答必须引用 Planner、Retriever、Evaluator、Reviewer 的关键中间结果，说明证据来源、置信度和风险。";
+    }
+
     private void registerToolDefinitions() {
         for (ToolDefinition definition : agentToolService.definitions()) {
             toolRegistry.register(new SimpleTool(
@@ -147,9 +188,26 @@ public class AgentOrchestrator {
             .orElse(null);
     }
 
-    private record AgentExecution(List<AgentPlanStep> steps, List<ToolResult> toolResults) {
+    private String summarize(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replaceAll("\\s+", " ").strip();
+        return normalized.length() > 160 ? normalized.substring(0, 160) + "..." : normalized;
     }
 
-    public record AgentRun(SkillDefinition skill, AgentPlan plan, List<ToolResult> toolResults, DocumentSearchResponse references) {
+    private record AgentExecution(List<AgentPlanStep> steps, List<ToolResult> toolResults, int retryCount) {
+    }
+
+    public record AgentRun(
+        SkillDefinition skill,
+        AgentRouteDecision routeDecision,
+        AgentPlan plan,
+        List<ToolResult> toolResults,
+        DocumentSearchResponse references,
+        AgentRunMetrics metrics,
+        ChatMemorySnapshot memorySnapshot,
+        CollaborationTrace collaborationTrace
+    ) {
     }
 }

@@ -12,8 +12,12 @@ public class ChatMemoryContext {
     }
 
     public String render(List<ChatMessageView> messages) {
+        return snapshot(messages).summary();
+    }
+
+    public ChatMemorySnapshot snapshot(List<ChatMessageView> messages) {
         if (messages == null || messages.isEmpty() || maxMessages == 0) {
-            return "";
+            return ChatMemorySnapshot.empty();
         }
         int start = Math.max(0, messages.size() - maxMessages);
         List<ChatMessageView> recent = messages.subList(start, messages.size());
@@ -24,7 +28,7 @@ public class ChatMemoryContext {
                 .append(message.content())
                 .append('\n');
         }
-        return builder.toString().strip();
+        return new ChatMemorySnapshot(recent.size(), builder.toString().strip());
     }
 
     private String label(String role) {

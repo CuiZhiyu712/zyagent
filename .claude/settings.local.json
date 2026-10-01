@@ -9,7 +9,17 @@
       "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -q -f backend/pom.xml test)",
       "Bash(npx vite *)",
       "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -q -f backend/pom.xml compile)",
-      "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -f backend/pom.xml test -DfailIfNoTests=false)"
+      "Bash(\"./.tools/apache-maven-3.9.9/bin/mvn.cmd\" -f backend/pom.xml test -DfailIfNoTests=false)",
+      "Bash(where docker *)",
+      "Bash(net stop *)",
+      "Bash(sc queryex *)",
+      "Bash(where mysqldump *)",
+      "Read(//c/Program Files/MySQL/MySQL Server 8.0/bin/**)",
+      "Read(//c/Program Files/MySQL/MySQL Server 8.4/bin/**)",
+      "Bash(break)",
+      "Bash(\"/d/MySQL/MySQL Server 8.0/bin/mysql\" -u root -p163512 zyagent -e \"SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA='zyagent' ORDER BY TABLE_NAME;\")",
+      "Bash(./.tools/apache-maven-3.9.9/bin/mvn.cmd -q -f backend/pom.xml test)",
+      "Bash(git add *)"
     ]
   }
 }

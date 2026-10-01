@@ -166,6 +166,11 @@ async function sendMessage(content) {
     plan: null,
     tools: [],
     references: null,
+    route: null,
+    usage: null,
+    metrics: null,
+    memory: null,
+    collaboration: null,
     streaming: true,
     stopped: false,
     error: ''
@@ -198,6 +203,26 @@ async function sendMessage(content) {
         onReferences: references => {
           receivedEvents += 1
           assistant.references = references
+        },
+        onRoute: route => {
+          receivedEvents += 1
+          assistant.route = route
+        },
+        onUsage: usage => {
+          receivedEvents += 1
+          assistant.usage = usage
+        },
+        onMetrics: metrics => {
+          receivedEvents += 1
+          assistant.metrics = metrics
+        },
+        onMemory: memory => {
+          receivedEvents += 1
+          assistant.memory = memory
+        },
+        onCollaboration: collaboration => {
+          receivedEvents += 1
+          assistant.collaboration = collaboration
         },
         onMessage: chunk => {
           receivedEvents += 1
@@ -263,6 +288,11 @@ async function completeFallback(content, assistant) {
   assistant.skill = result.skill
   assistant.tools = result.toolResults || []
   assistant.references = result.references || null
+  assistant.route = result.routeDecision || null
+  assistant.usage = result.tokenUsage || null
+  assistant.metrics = result.runMetrics || null
+  assistant.memory = result.memorySnapshot || null
+  assistant.collaboration = result.collaborationTrace || null
   assistant.content = ''
   for (const chunk of chunkText(result.answer || '', 12)) {
     assistant.content += chunk
@@ -325,9 +355,14 @@ function toMessage(value) {
     role: value.role,
     content: value.content,
     skill: references.skill ? { id: references.skill, name: references.skill } : null,
-    plan: null,
-    tools: [],
+    plan: references.plan || null,
+    tools: references.tools || [],
     references: references.references || null,
+    route: references.route || null,
+    usage: references.usage || null,
+    metrics: references.metrics || null,
+    memory: references.memory || null,
+    collaboration: references.collaboration || null,
     streaming: false,
     stopped: false,
     error: ''

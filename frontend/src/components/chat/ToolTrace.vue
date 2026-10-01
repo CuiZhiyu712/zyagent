@@ -11,6 +11,8 @@
           <span>{{ stepTitle(step) }}</span>
           <small v-if="stepStatus(step)" :class="['step-status', stepStatus(step).toLowerCase()]">{{ stepStatusLabel(step) }}</small>
           <em v-if="step.toolName">{{ step.toolName }}</em>
+          <em v-if="step.inputSummary">输入：{{ step.inputSummary }}</em>
+          <em v-if="step.outputSummary">输出：{{ step.outputSummary }}</em>
           <strong v-if="step.errorMessage">{{ step.errorMessage }}</strong>
         </li>
       </ol>
@@ -67,6 +69,8 @@ function stepStatusLabel(step) {
     RUNNING: '执行中',
     SUCCESS: '成功',
     FAILED: '失败',
+    RETRYING: '重试中',
+    SKIPPED: '已跳过',
     REPLANNED: '已重规划'
   }
   return labels[stepStatus(step)] || stepStatus(step)

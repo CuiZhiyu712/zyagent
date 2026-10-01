@@ -21,6 +21,9 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
 - **结构化输出**：对学习计划、岗位分析、面试评分等场景提供 DTO/record 解析与 fallback。
 - **MCP Server**：接入 Spring AI MCP Server WebMVC starter，预留标准 MCP tools 暴露能力。
 - **Plan-Execute-Replan**：Agent 计划步骤支持状态、工具名、错误信息、耗时和重规划展示。
+- **Multi-Agent Collaboration**：在单次任务内固定协作 `Planner -> Retriever -> Evaluator -> Reviewer`，通过共享 memory 和 `AgentArtifact` 中间结果协议沉淀计划、证据、评估与复核结论。
+- **Agent 可观测性**：前端展示路由决策、Plan-Executor、工具调用状态、RAG 命中、token 估算、短期记忆和 multi-agent 协作链路。
+- **Markdown 回答渲染**：聊天回答支持标题、列表、粗体、行内代码和代码块渲染，避免直接暴露 `###` 等 Markdown 标记。
 - **岗位自动采集**：支持每日定时采集、搜索 URL 模板、列表页进入详情页二次抓取、采集日志。
 - **前端完整交互**：Vue 3 + Element Plus 实现工作台、知识库、智能对话、岗位中心、简历匹配、模拟面试和复盘报告。
 
@@ -42,8 +45,10 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
 
 - `POST /api/chat/complete`：同步对话。
 - `POST /api/chat/stream`：SSE 流式对话。
-- SSE 事件保持为 `skill`、`plan`、`tools`、`references`、`message`。
-- 支持会话列表、历史消息、删除对话、工具调用轨迹、RAG 引用来源展示。
+- SSE 事件包括 `skill`、`route`、`plan`、`tools`、`metrics`、`memory`、`collaboration`、`references`、`message`、`usage`。
+- 支持会话列表、历史消息、删除对话、工具调用轨迹、RAG 引用来源、token 估算和短期记忆展示。
+- 支持任务路由：简历类、岗位类、面试类、学习计划类、知识问答类、复盘类和通用兜底。
+- 支持 multi-agent 协作可视化：`Planner` 负责拆解任务，`Retriever` 负责检索证据，`Evaluator` 负责评估命中率/工具成功率/置信度，`Reviewer` 负责检查最终回答是否引用中间结果。
 
 ### 2. 知识库
 
@@ -68,7 +73,18 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
 
 这些工具同时服务于聊天 Agent、前端 ToolTrace 和 MCP Server 暴露。
 
-### 4. 岗位中心
+### 4. Multi-Agent Collaboration
+
+v1 采用确定性顺序协作，不额外启动多个进程，子 Agent 以服务和协议层形式协同：
+
+- `PlannerAgent`：根据 `SkillRouter` 的分类和 skill 计划生成任务拆解。
+- `RetrieverAgent`：把 RAG 检索结果转成可引用的 `AgentArtifact`。
+- `EvaluatorAgent`：统计工具成功率、RAG 命中率、平均分和综合置信度。
+- `ReviewerAgent`：检查回答约束，要求最终回答引用 Planner、Retriever、Evaluator、Reviewer 的关键中间结果。
+- `SharedAgentMemory`：在本轮任务内共享用户问题、短期记忆、工具结果、RAG 证据和 artifacts。
+- `CollaborationTrace`：返回给前端并随历史消息保存，用于恢复协作链路。
+
+### 5. 岗位中心
 
 - 手动导入 JD。
 - 每日定时采集公开招聘页面。
@@ -82,7 +98,7 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
   - 每个来源详情页抓取上限。
 - 采集日志展示新增、更新、跳过、失败、候选数、详情抓取数和失败原因。
 
-### 5. 简历匹配、模拟面试、复盘
+### 6. 简历匹配、模拟面试、复盘
 
 - 根据岗位 JD 与简历内容生成匹配报告。
 - 基于岗位和个人资料生成模拟面试问题。
@@ -95,7 +111,7 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
 ZYagent
 ├─ backend
 │  ├─ src/main/java/com/zyagent
-│  │  ├─ agent          # Agent 编排、计划、重规划
+│  │  ├─ agent          # Agent 编排、计划、重规划、多子 Agent 协作、token/metrics
 │  │  ├─ ai             # Spring AI DeepSeek 适配
 │  │  ├─ chat           # 对话接口、SSE
 │  │  ├─ document       # 文档上传、解析、检索
@@ -109,8 +125,8 @@ ZYagent
 │  ├─ src
 │  │  ├─ App.vue
 │  │  ├─ api.js
-│  │  ├─ chat
-│  │  └─ components
+│  │  ├─ chat           # SSE 解析、Markdown 渲染、上传快捷动作
+│  │  └─ components     # 业务页面与聊天 trace 可视化组件
 │  └─ package.json
 ├─ docs
 │  ├─ daily-job-collection-plan.md
@@ -279,7 +295,7 @@ Start-Process "npm.cmd" "run dev -- --host 127.0.0.1" -WorkingDirectory ".\front
 
 ```powershell
 cd frontend
-node --test src\chat\chatStream.test.mjs src\chat\uploadActions.test.mjs
+node --test src\chat\chatStream.test.mjs src\chat\markdownRenderer.test.mjs src\chat\uploadActions.test.mjs
 ```
 
 前端构建：
@@ -364,7 +380,7 @@ BOSS 采集使用 Playwright Java 打开本地可视化浏览器。首次使用�
 
 ## 简历项目描述
 
-zyagent 是一个基于 Spring Boot、Spring AI DeepSeek、Milvus、Redis、MySQL 和 Vue 3 构建的个人知识成长与求职 Agent 平台。项目实现了 RAG 知识库、Chat Memory、Tool Calling、结构化输出、MCP Server、Plan-Execute-Replan 和 SSE 流式对话能力，支持学习资料问答、简历优化、岗位 JD 解析、岗位匹配、模拟面试、复盘报告和每日岗位采集。系统通过 MySQL 持久化会话、文档、岗位和工具调用记录，通过 Milvus 提供语义检索，并在前端展示可追溯的工具轨迹和 RAG 引用来源。
+zyagent 是一个基于 Spring Boot、Spring AI DeepSeek、Milvus、Redis、MySQL 和 Vue 3 构建的个人知识成长与求职 Agent 平台。项目实现了 RAG 知识库、Chat Memory、Tool Calling、结构化输出、MCP Server、Plan-Execute-Replan、Multi-Agent Collaboration 和 SSE 流式对话能力，支持学习资料问答、简历优化、岗位 JD 解析、岗位匹配、模拟面试、复盘报告和每日岗位采集。系统通过 `Planner`、`Retriever`、`Evaluator`、`Reviewer` 子 Agent 共享 memory 与中间结果协议完成任务，通过 MySQL 持久化会话、文档、岗位和工具调用记录，通过 Milvus 提供语义检索，并在前端展示可追溯的工具轨迹、RAG 引用来源、token 用量、路由决策和 multi-agent 协作链路。
 
 ## 注意事项
 

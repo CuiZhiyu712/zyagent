@@ -37,6 +37,11 @@ export async function streamChat(payload, handlers = {}) {
           if (event.event === 'plan') handlers.onPlan?.(event.data)
           if (event.event === 'tools') handlers.onTools?.(event.data)
           if (event.event === 'references') handlers.onReferences?.(event.data)
+          if (event.event === 'route') handlers.onRoute?.(event.data)
+          if (event.event === 'usage') handlers.onUsage?.(event.data)
+          if (event.event === 'metrics') handlers.onMetrics?.(event.data)
+          if (event.event === 'memory') handlers.onMemory?.(event.data)
+          if (event.event === 'collaboration') handlers.onCollaboration?.(event.data)
           if (event.event === 'message') handlers.onMessage?.(String(event.data))
         }
       }
@@ -48,6 +53,11 @@ export async function streamChat(payload, handlers = {}) {
         if (event.event === 'plan') handlers.onPlan?.(event.data)
         if (event.event === 'tools') handlers.onTools?.(event.data)
         if (event.event === 'references') handlers.onReferences?.(event.data)
+        if (event.event === 'route') handlers.onRoute?.(event.data)
+        if (event.event === 'usage') handlers.onUsage?.(event.data)
+        if (event.event === 'metrics') handlers.onMetrics?.(event.data)
+        if (event.event === 'memory') handlers.onMemory?.(event.data)
+        if (event.event === 'collaboration') handlers.onCollaboration?.(event.data)
         if (event.event === 'message') handlers.onMessage?.(String(event.data))
       }
       handlers.onDone?.()
