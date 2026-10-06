@@ -26,7 +26,7 @@
       </div>
     </details>
 
-    <details v-if="route" open>
+    <details v-if="route">
       <summary>
         <span>路由决策</span>
         <strong>{{ route.category || 'GENERAL' }}</strong>
