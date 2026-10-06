@@ -15,6 +15,7 @@
         <el-menu-item index="jobs">岗位中心</el-menu-item>
         <el-menu-item index="match">简历匹配</el-menu-item>
         <el-menu-item index="interview">模拟面试</el-menu-item>
+        <el-menu-item index="profile">我的画像</el-menu-item>
         <el-menu-item index="review">复盘报告</el-menu-item>
       </el-menu>
     </el-aside>
@@ -81,7 +82,7 @@
           </el-table>
         </section>
 
-        <ChatWorkspace v-if="active === 'chat'" />
+        <ChatWorkspace v-show="active === 'chat'" />
 
         <section v-if="active === 'jobs'" class="split">
           <el-card class="wide boss-collect" shadow="never">
@@ -228,7 +229,7 @@
 
         <section v-if="active === 'interview'" class="split">
           <el-card shadow="never">
-            <template #header>创建模拟面试</template>
+            <template #header><div class="card-header-row"><span>创建模拟面试</span><el-tag v-if="interviewSession" effect="plain">{{ interviewSession.state }}</el-tag></div></template>
             <el-select v-model="interview.jobId" class="full">
               <el-option v-for="job in jobs" :key="job.id" :label="`${job.company} - ${job.title}`" :value="job.id" />
             </el-select>
@@ -239,10 +240,108 @@
               <el-option label="综合面" value="综合面" />
             </el-select>
             <el-button type="primary" @click="simulateInterview">开始面试</el-button>
+            <el-button v-if="interviewSession && interviewSession.state === 'IN_PROGRESS'" plain @click="completeInterview">结束面试</el-button>
+            <div v-if="currentQuestion" class="interview-current">
+              <strong>当前问题</strong>
+              <p>{{ currentQuestion }}</p>
+            </div>
+            <el-input v-if="canAnswer" v-model="interviewAnswer" type="textarea" :rows="5" class="form-gap" placeholder="输入本轮回答" />
+            <el-button v-if="canAnswer" type="success" @click="submitInterviewAnswer">提交回答</el-button>
+            <el-alert v-if="interviewSession && interviewSession.summary" :title="`面试总结：${interviewSession.summary}`" type="success" :closable="false" />
+            <div class="history-list">
+              <strong>历史会话</strong>
+              <el-button v-for="item in interviewSessions" :key="item.id" link @click="loadInterview(item.id)">{{ item.interviewType }} · {{ item.state }} · {{ item.updatedAt }}</el-button>
+            </div>
           </el-card>
           <el-card shadow="never">
-            <template #header>首轮问题</template>
-            <pre class="output">{{ interviewResult }}</pre>
+            <template #header>面试历史</template>
+            <pre v-if="!interviewTurns.length" class="output">{{ interviewResult }}</pre>
+            <div v-for="turn in interviewTurns" :key="turn.id" class="interview-turn">
+              <strong>第 {{ turn.turnNo }} 轮 · {{ turn.state }}</strong>
+              <p>{{ turn.question }}</p>
+              <p class="turn-answer">{{ turn.answer || '待回答' }}</p>
+              <div v-if="turn.evaluation" class="evaluation-grid">
+                <template v-if="turn.evaluation.usable">
+                  <span class="eval-chip">技术正确性 {{ turn.evaluation.technicalCorrectness }}</span>
+                  <span class="eval-chip">完整性 {{ turn.evaluation.completeness }}</span>
+                  <span class="eval-chip">项目证据 {{ turn.evaluation.projectEvidence }}</span>
+                  <span class="eval-chip">表达结构 {{ turn.evaluation.expressionStructure }}</span>
+                </template>
+                <span v-else class="eval-chip fail">评价不可用：{{ turn.evaluation.note }}</span>
+              </div>
+              <ul v-if="turn.evaluation && turn.evaluation.explanations && turn.evaluation.explanations.length" class="eval-notes">
+                <li v-for="(line, index) in turn.evaluation.explanations" :key="index">{{ line }}</li>
+              </ul>
+              <p v-if="turn.followUpQuestion" class="turn-next">追问：{{ turn.followUpQuestion }}</p>
+            </div>
+          </el-card>
+        </section>
+
+        <section v-if="active === 'profile'" class="split">
+          <el-card shadow="never">
+            <template #header><div class="card-header-row"><span>技能画像</span><el-button size="small" @click="refreshProfile">刷新</el-button></div></template>
+            <el-empty v-if="!profileSkills.length" description="暂无已确认技能；可确认面试评价生成的建议，或在下方手动添加" />
+            <div v-for="skill in profileSkills" :key="skill.skillKey" class="profile-skill">
+              <div>
+                <strong>{{ skill.skillKey }}</strong>
+                <el-tag size="small" effect="plain">{{ skill.level }}</el-tag>
+              </div>
+              <p>{{ skill.evidence }}</p>
+              <small>来源：{{ skill.sourceType }} · 置信度 {{ Math.round((skill.confidence || 0) * 100) }}% · v{{ skill.version }}</small>
+              <div class="quick-actions">
+                <button type="button" @click="toggleEvidence(skill.skillKey)">证据</button>
+                <button type="button" @click="toggleHistory(skill.skillKey)">历史</button>
+                <button type="button" @click="startEditSkill(skill)">编辑</button>
+                <button type="button" @click="removeProfileSkill(skill.skillKey)">删除</button>
+              </div>
+              <ul v-if="expandedEvidence[skill.skillKey]" class="profile-detail">
+                <li v-for="item in expandedEvidence[skill.skillKey]" :key="item.id">
+                  {{ item.sourceType }}{{ item.sourceId ? `#${item.sourceId}` : '' }} · {{ item.summary }}
+                </li>
+              </ul>
+              <ul v-if="expandedHistory[skill.skillKey]" class="profile-detail">
+                <li v-for="item in expandedHistory[skill.skillKey]" :key="item.id">
+                  {{ item.changeType }}：{{ item.oldLevel || '—' }} → {{ item.newLevel || '—' }}（{{ item.note }}）
+                </li>
+              </ul>
+            </div>
+
+            <el-divider />
+            <el-form label-width="72px">
+              <el-form-item label="技能">
+                <el-input v-model="skillForm.skillKey" placeholder="如 Redis" />
+              </el-form-item>
+              <el-form-item label="级别">
+                <el-select v-model="skillForm.level" class="full">
+                  <el-option v-for="level in skillLevels" :key="level" :label="level" :value="level" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="证据">
+                <el-input v-model="skillForm.evidence" type="textarea" :rows="2" placeholder="来源摘要，不粘贴完整文档" />
+              </el-form-item>
+              <el-button type="primary" @click="saveProfileSkill">保存技能</el-button>
+              <el-button plain @click="resetSkillForm">清空</el-button>
+            </el-form>
+          </el-card>
+
+          <el-card shadow="never">
+            <template #header>待审核建议</template>
+            <el-empty v-if="!profileSuggestions.length" description="暂无待审核建议；完成模拟面试后会自动生成" />
+            <div v-for="suggestion in profileSuggestions" :key="suggestion.id" class="profile-suggestion">
+              <div>
+                <strong>{{ suggestion.skillKey }}</strong>
+                <el-tag size="small" effect="plain">{{ suggestion.previousLevel || '新技能' }} → {{ suggestion.suggestedLevel }}</el-tag>
+                <el-tag size="small" effect="plain">{{ suggestion.state }}</el-tag>
+              </div>
+              <p>{{ suggestion.evidence }}</p>
+              <small>来源：{{ suggestion.sourceType }}{{ suggestion.sourceId ? `#${suggestion.sourceId}` : '' }} · 模型：{{ suggestion.model }}</small>
+              <div v-if="suggestion.state === 'PENDING' || suggestion.state === 'EDITED'" class="quick-actions">
+                <button type="button" @click="approveProfile(suggestion.id)">确认</button>
+                <button type="button" @click="rejectProfile(suggestion)">拒绝</button>
+                <button type="button" @click="editSuggestionLevel(suggestion)">更正级别</button>
+              </div>
+              <p v-else-if="suggestion.note" class="turn-answer">{{ suggestion.note }}</p>
+            </div>
           </el-card>
         </section>
 
@@ -324,6 +423,24 @@ const resumeSkills = ref('Java,Spring Boot,MySQL,Redis')
 const matchResult = ref('')
 const interview = reactive({ jobId: '', interviewType: '项目深挖', difficulty: '中等' })
 const interviewResult = ref('')
+const interviewSession = ref(null)
+const interviewTurns = ref([])
+const interviewAnswer = ref('')
+const interviewSessions = ref([])
+const skillLevels = ['AWARENESS', 'BASIC', 'WORKING', 'PROFICIENT']
+const skillForm = reactive({ skillKey: '', level: 'WORKING', evidence: '', expectedVersion: null })
+const expandedEvidence = reactive({})
+const expandedHistory = reactive({})
+
+const currentQuestion = computed(() => {
+  const pending = [...interviewTurns.value].reverse().find(turn => turn?.state === 'QUESTION_READY')
+  return pending ? pending.question : ''
+})
+const canAnswer = computed(() =>
+  interviewSession.value?.state === 'IN_PROGRESS' && Boolean(currentQuestion.value)
+)
+const profileSkills = ref([])
+const profileSuggestions = ref([])
 const reviewText = ref('')
 const reviewResult = ref('')
 const collectingJobs = ref(false)
@@ -347,6 +464,7 @@ const titles = {
   jobs: ['岗位中心', '导入、解析和管理主流互联网岗位 JD'],
   match: ['简历匹配', '对比简历与岗位要求，生成优化建议'],
   interview: ['模拟面试', '基于岗位和个人资料连续追问'],
+  profile: ['我的画像', '查看技能证据并确认 Agent 提出的成长建议'],
   review: ['复盘报告', '沉淀薄弱点并生成补强计划']
 }
 
@@ -361,6 +479,8 @@ async function refresh() {
     await refreshJobCollection()
     if (!selectedJobId.value && jobs.value.length) selectedJobId.value = jobs.value[0].id
     if (!interview.jobId && jobs.value.length) interview.jobId = jobs.value[0].id
+    await refreshProfile()
+    await refreshInterviewSessions()
   } catch (error) {
     ElMessage.warning(error.message)
   }
@@ -581,21 +701,183 @@ function sourceLabel(value) {
 }
 
 async function matchResume() {
+  const confirmedSkills = profileSkills.value.map(skill => skill.skillKey)
+  const skills = [...new Set([...resumeSkills.value.split(',').map(item => item.trim()).filter(Boolean), ...confirmedSkills])]
   const report = await api.matchResume(selectedJobId.value, {
     resumeText: resumeText.value,
-    skills: resumeSkills.value.split(',').map(item => item.trim()).filter(Boolean),
+    skills,
     projects: []
   })
   matchResult.value = JSON.stringify(report, null, 2)
 }
 
 async function simulateInterview() {
-  const result = await api.simulateInterview(interview)
-  interviewResult.value = JSON.stringify(result, null, 2)
+  try {
+    const details = await api.createInterview({
+      jobId: interview.jobId,
+      interviewType: interview.interviewType,
+      difficulty: interview.difficulty
+    })
+    interviewSession.value = details.session
+    interviewTurns.value = details.turns || []
+    interviewResult.value = ''
+    await refreshInterviewSessions()
+  } catch (error) {
+    ElMessage.error(error.message || '创建面试失败')
+  }
+}
+
+async function submitInterviewAnswer() {
+  if (!interviewSession.value || !interviewAnswer.value.trim()) return
+  try {
+    await api.submitInterviewTurn(interviewSession.value.id, interviewAnswer.value, crypto.randomUUID())
+    interviewAnswer.value = ''
+    await loadInterview(interviewSession.value.id)
+  } catch (error) {
+    ElMessage.error(error.message || '提交回答失败')
+  }
+}
+
+async function completeInterview() {
+  if (!interviewSession.value) return
+  try {
+    await api.completeInterview(interviewSession.value.id)
+    await loadInterview(interviewSession.value.id)
+    await refreshInterviewSessions()
+  } catch (error) {
+    ElMessage.error(error.message || '结束面试失败')
+  }
+}
+
+async function loadInterview(id) {
+  const details = await api.getInterview(id)
+  interviewSession.value = details.session
+  interviewTurns.value = details.turns || []
+}
+
+async function refreshInterviewSessions() {
+  try {
+    const page = await api.listInterviews()
+    interviewSessions.value = page?.items || []
+  } catch {
+    interviewSessions.value = []
+  }
+}
+
+async function refreshProfile() {
+  try {
+    profileSkills.value = await api.listProfileSkills()
+    profileSuggestions.value = await api.listProfileSuggestions()
+  } catch {
+    profileSkills.value = []
+    profileSuggestions.value = []
+  }
+}
+
+async function approveProfile(id) {
+  try {
+    await api.approveProfileSuggestion(id)
+    await refreshProfile()
+    ElMessage.success('技能画像已更新')
+  } catch (error) {
+    ElMessage.error(error.message || '确认失败')
+  }
+}
+
+async function rejectProfile(suggestion) {
+  try {
+    await api.rejectProfileSuggestion(suggestion.id, '用户拒绝')
+    await refreshProfile()
+    ElMessage.success('已拒绝该建议')
+  } catch (error) {
+    ElMessage.error(error.message || '拒绝失败')
+  }
+}
+
+async function editSuggestionLevel(suggestion) {
+  try {
+    const { value } = await ElMessageBox.prompt('输入更正后的级别（AWARENESS / BASIC / WORKING / PROFICIENT）', '更正建议', {
+      inputValue: suggestion.suggestedLevel,
+      inputValidator: input => skillLevels.includes((input || '').toUpperCase()) || '级别不合法'
+    })
+    await api.editProfileSuggestion(suggestion.id, { level: value.toUpperCase() })
+    await refreshProfile()
+    ElMessage.success('已更正，可继续确认')
+  } catch {
+    // 用户取消或输入非法
+  }
+}
+
+function startEditSkill(skill) {
+  skillForm.skillKey = skill.skillKey
+  skillForm.level = skill.level
+  skillForm.evidence = skill.evidence
+  skillForm.expectedVersion = skill.version
+}
+
+function resetSkillForm() {
+  skillForm.skillKey = ''
+  skillForm.level = 'WORKING'
+  skillForm.evidence = ''
+  skillForm.expectedVersion = null
+}
+
+async function saveProfileSkill() {
+  if (!skillForm.skillKey.trim()) {
+    ElMessage.warning('请填写技能名')
+    return
+  }
+  try {
+    await api.upsertProfileSkill(skillForm.skillKey.trim(), {
+      level: skillForm.level,
+      evidence: skillForm.evidence,
+      expectedVersion: skillForm.expectedVersion
+    })
+    resetSkillForm()
+    await refreshProfile()
+    ElMessage.success('画像已保存')
+  } catch (error) {
+    ElMessage.error(error.message || '保存失败')
+  }
+}
+
+async function removeProfileSkill(skillKey) {
+  try {
+    await api.deleteProfileSkill(skillKey)
+    await refreshProfile()
+    ElMessage.success('已删除技能')
+  } catch (error) {
+    ElMessage.error(error.message || '删除失败')
+  }
+}
+
+async function toggleEvidence(skillKey) {
+  if (expandedEvidence[skillKey]) {
+    delete expandedEvidence[skillKey]
+    return
+  }
+  try {
+    expandedEvidence[skillKey] = await api.listSkillEvidence(skillKey)
+  } catch {
+    expandedEvidence[skillKey] = []
+  }
+}
+
+async function toggleHistory(skillKey) {
+  if (expandedHistory[skillKey]) {
+    delete expandedHistory[skillKey]
+    return
+  }
+  try {
+    expandedHistory[skillKey] = await api.listSkillHistory(skillKey)
+  } catch {
+    expandedHistory[skillKey] = []
+  }
 }
 
 async function submitReview() {
-  const result = await api.submitReview({ content: reviewText.value })
+  const profileContext = profileSkills.value.map(skill => `${skill.skillKey}(${skill.level})`).join(', ')
+  const result = await api.submitReview({ content: `${reviewText.value}\n\n已确认技能画像：${profileContext || '暂无'}` })
   reviewResult.value = JSON.stringify(result, null, 2)
 }
 

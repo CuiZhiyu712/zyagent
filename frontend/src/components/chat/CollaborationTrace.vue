@@ -1,6 +1,6 @@
 <template>
   <div v-if="hasTrace" class="collaboration-trace">
-    <details open>
+    <details>
       <summary>
         <span>Multi-Agent Collaboration</span>
         <strong>{{ successCount }}/{{ agents.length }} agents</strong>

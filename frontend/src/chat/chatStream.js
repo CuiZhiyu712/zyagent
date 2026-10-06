@@ -31,35 +31,11 @@ export async function streamChat(payload, handlers = {}) {
         const { value, done } = await reader.read()
         if (done) break
         const events = parseSseChunk(decoder.decode(value, { stream: true }), state)
-        for (const event of events) {
-          handlers.onEvent?.(event)
-          if (event.event === 'skill') handlers.onSkill?.(event.data)
-          if (event.event === 'plan') handlers.onPlan?.(event.data)
-          if (event.event === 'tools') handlers.onTools?.(event.data)
-          if (event.event === 'references') handlers.onReferences?.(event.data)
-          if (event.event === 'route') handlers.onRoute?.(event.data)
-          if (event.event === 'usage') handlers.onUsage?.(event.data)
-          if (event.event === 'metrics') handlers.onMetrics?.(event.data)
-          if (event.event === 'memory') handlers.onMemory?.(event.data)
-          if (event.event === 'collaboration') handlers.onCollaboration?.(event.data)
-          if (event.event === 'message') handlers.onMessage?.(String(event.data))
-        }
+        events.forEach(event => dispatchEvent(event, handlers))
       }
 
       const trailing = parseSseChunk('\n\n', state)
-      for (const event of trailing) {
-        handlers.onEvent?.(event)
-        if (event.event === 'skill') handlers.onSkill?.(event.data)
-        if (event.event === 'plan') handlers.onPlan?.(event.data)
-        if (event.event === 'tools') handlers.onTools?.(event.data)
-        if (event.event === 'references') handlers.onReferences?.(event.data)
-        if (event.event === 'route') handlers.onRoute?.(event.data)
-        if (event.event === 'usage') handlers.onUsage?.(event.data)
-        if (event.event === 'metrics') handlers.onMetrics?.(event.data)
-        if (event.event === 'memory') handlers.onMemory?.(event.data)
-        if (event.event === 'collaboration') handlers.onCollaboration?.(event.data)
-        if (event.event === 'message') handlers.onMessage?.(String(event.data))
-      }
+      trailing.forEach(event => dispatchEvent(event, handlers))
       handlers.onDone?.()
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -71,6 +47,19 @@ export async function streamChat(payload, handlers = {}) {
   })()
 
   return { controller, done }
+}
+
+const handlerByEvent = {
+  skill: 'onSkill', plan: 'onPlan', tools: 'onTools', references: 'onReferences',
+  task: 'onTask', step: 'onStep', status: 'onStatus', route: 'onRoute', usage: 'onUsage',
+  metrics: 'onMetrics', memory: 'onMemory', collaboration: 'onCollaboration',
+  pipeline: 'onPipeline', message: 'onMessage'
+}
+
+function dispatchEvent(event, handlers) {
+  handlers.onEvent?.(event)
+  const handler = handlers[handlerByEvent[event.event]]
+  if (handler) handler(event.event === 'message' ? String(event.data) : event.data)
 }
 
 function parseFrame(frame) {

@@ -14,15 +14,32 @@
     <article v-for="message in messages" :key="message.id" :class="['message-row', message.role]">
       <div class="avatar">{{ message.role === 'user' ? '你' : 'ZY' }}</div>
       <div class="message-bubble">
-        <ToolTrace v-if="message.role === 'assistant'" :skill="message.skill" :plan="message.plan" :tools="message.tools" />
-        <CollaborationTrace v-if="message.role === 'assistant'" :collaboration="message.collaboration" />
-        <ReferenceTrace v-if="message.role === 'assistant'" :references="message.references" />
-        <ObservabilityTrace
+        <details v-if="message.role === 'assistant'" class="agent-details">
+          <summary>Agent 执行详情</summary>
+          <div class="agent-details-body">
+            <ToolTrace :skill="message.skill" :plan="message.plan" :tools="message.tools" />
+            <CollaborationTrace :collaboration="message.collaboration" />
+            <PipelineTrace :pipeline="message.pipeline" />
+            <ReferenceTrace :references="message.references" />
+            <ObservabilityTrace
+              :task="message.task"
+              :status="message.status"
+              :steps="message.steps"
+              :route="message.route"
+              :usage="message.usage"
+              :metrics="message.metrics"
+              :memory="message.memory"
+              @retry="$emit('retryTask', message)"
+            />
+          </div>
+        </details>
+        <AuditTrace
           v-if="message.role === 'assistant'"
+          :content="message.content || ''"
+          :references="message.references"
+          :collaboration="message.collaboration"
           :route="message.route"
-          :usage="message.usage"
           :metrics="message.metrics"
-          :memory="message.memory"
         />
         <div v-if="message.kind === 'upload'" class="upload-card">
           <div class="upload-card-head">
@@ -56,11 +73,13 @@
 import { nextTick, ref, watch } from 'vue'
 import ToolTrace from './ToolTrace.vue'
 import CollaborationTrace from './CollaborationTrace.vue'
+import PipelineTrace from './PipelineTrace.vue'
 import ReferenceTrace from './ReferenceTrace.vue'
 import ObservabilityTrace from './ObservabilityTrace.vue'
+import AuditTrace from './AuditTrace.vue'
 import { renderMarkdown } from '../../chat/markdownRenderer'
 
-defineEmits(['pickPrompt'])
+defineEmits(['pickPrompt', 'retryTask'])
 
 const props = defineProps({
   messages: {

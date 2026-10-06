@@ -20,11 +20,19 @@
 
 ### zyagent 个人知识成长与求职 Agent 平台
 
-项目背景：面向 Java 后端求职者，构建集学习资料问答、简历优化、JD 分析、岗位匹配、模拟面试和复盘报告于一体的个人 Agent 平台。
+项目背景：面向 Java 后端求职者，构建集学习资料问答、简历优化、JD 分析、岗位匹配、多轮模拟面试、复盘和学习补强于一体的个人 Agent 平台。
 
 技术栈：Spring Boot、DeepSeek、Milvus、Redis、MySQL、Vue 3、Element Plus。
 
 个人职责：
+
+- 设计 `SkillRouter`、`AgentOrchestrator` 与 Plan-Execute-Replan 执行链，编排 Planner、Retriever、Evaluator、Reviewer 多 Agent 协作，并将任务、步骤、工具调用状态持久化，支持幂等、超时、重试和失败恢复。
+
+- 实现向量与关键词并行召回、RRF 融合去重及可插拔 reranker；外部重排服务超时或异常时自动回退到 RRF，并返回检索模式、引用来源和耗时等追踪信息。
+
+- 构建多轮面试领域模型，持久化回答、评价、追问和复盘结果；将面试证据转化为可审核的技能画像建议，画像确认后参与岗位匹配并驱动学习计划生成。
+
+- 通过 SSE 向 Vue 3 前端增量推送路由、计划、工具步骤、任务状态、RAG 引用和协作链路，提升 Agent 执行过程的可解释性。
 
 - 设计 RAG 文档上传、解析、切片、向量检索流程。
 - 实现 SkillRouter，将学习导师、简历顾问、岗位分析、面试官、复盘教练抽象为内部 Skill。

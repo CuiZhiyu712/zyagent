@@ -43,6 +43,22 @@ test('parseSseChunk parses references events with search mode and hits', () => {
   ])
 })
 
+test('parseSseChunk parses task lifecycle events', () => {
+  const events = parseSseChunk('event: task\ndata: {"id":"task-1","state":"RUNNING"}\n\n', { buffer: '' })
+
+  assert.deepEqual(events, [
+    { event: 'task', data: { id: 'task-1', state: 'RUNNING' } }
+  ])
+})
+
+test('parseSseChunk parses the unified pipeline event', () => {
+  const events = parseSseChunk('event: pipeline\ndata: {"stages":[{"id":"route","status":"SUCCESS"}]}\n\n', { buffer: '' })
+
+  assert.deepEqual(events, [
+    { event: 'pipeline', data: { stages: [{ id: 'route', status: 'SUCCESS' }] } }
+  ])
+})
+
 test('streamChat dispatches references events', async () => {
   const originalFetch = globalThis.fetch
   const encoder = new TextEncoder()
@@ -158,6 +174,53 @@ test('streamChat dispatches collaboration events', async () => {
     assert.equal(received.agents[0].role, 'PLANNER')
     assert.equal(received.artifacts[0].type, 'plan')
     assert.equal(received.finalReview, '回答需要引用中间结果')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('streamChat dispatches task step and status events', async () => {
+  const originalFetch = globalThis.fetch
+  const encoder = new TextEncoder()
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode([
+          'event: task',
+          'data: {"id":"task-1","state":"RUNNING"}',
+          '',
+          'event: step',
+          'data: {"taskId":"task-1","stepNo":1,"status":"SUCCESS"}',
+          '',
+          'event: status',
+          'data: {"taskId":"task-1","state":"SUCCEEDED","persistence":"memory"}',
+          '',
+          ''
+        ].join('\n')))
+        controller.close()
+      }
+    })
+  })
+
+  try {
+    const tasks = []
+    const steps = []
+    let status = null
+    const stream = await streamChat({ message: 'test' }, {
+      onTask: task => tasks.push(task),
+      onStep: step => steps.push(step),
+      onStatus: value => {
+        status = value
+      }
+    })
+    await stream.done
+
+    assert.equal(tasks[0].id, 'task-1')
+    assert.equal(steps[0].stepNo, 1)
+    assert.equal(steps[0].status, 'SUCCESS')
+    assert.equal(status.state, 'SUCCEEDED')
+    assert.equal(status.persistence, 'memory')
   } finally {
     globalThis.fetch = originalFetch
   }
