@@ -62,6 +62,22 @@ public class SkillCatalog {
             List.of("search_personal_knowledge"),
             List.of("检索相关资料", "筛选引用来源", "基于资料回答")
         ));
+        register(new SkillDefinition(
+            "chat_skill",
+            "对话澄清 Skill",
+            "处理闲聊、确认与对回答的纠错反馈；不注册任何业务工具，避免把元反馈当业务参数。",
+            AgentMode.CHAT,
+            List.of(),
+            List.of("复述理解到的差异", "结合上下文澄清或修正")
+        ));
+        register(new SkillDefinition(
+            "clarify_skill",
+            "意图澄清 Skill",
+            "请求缺少明确对象时向用户确认要做什么；不注册业务工具，不猜测对象。",
+            AgentMode.CLARIFY,
+            List.of(),
+            List.of("提出一个澄清问题", "列出可选任务方向")
+        ));
     }
 
     public SkillDefinition byId(String id) {

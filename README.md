@@ -23,6 +23,10 @@ zyagent 是一个面向 Java 后端求职与个人知识成长的 AI Agent 平�
 - **Plan-Execute-Replan**：Agent 计划步骤支持状态、工具名、错误信息、耗时和重规划展示。
 - **Multi-Agent Collaboration**：在单次任务内固定协作 `Planner -> Retriever -> Evaluator -> Reviewer`，通过共享 memory 和 `AgentArtifact` 中间结果协议沉淀计划、证据、评估与复核结论。
 - **Agent 可观测性**：前端展示路由决策、Plan-Executor、工具调用状态、RAG 命中、token 估算、短期记忆和 multi-agent 协作链路。
+- **Agent 任务持久化**：为同步和 SSE 执行创建任务与步骤记录，保存状态、结果、错误和耗时，并提供任务查询 API；MySQL 不可用时保留本地演示降级。
+- **Hybrid RAG 与重排边界**：向量和关键词并行召回，使用 RRF 融合去重，并通过可插拔 `Reranker` 接口统一二阶段排序；当前默认使用 `rrf_fallback`，外部 reranker 尚未接入。
+- **可恢复多轮面试**：持久化面试会话和轮次，支持回答、评价和动态追问；旧 `/api/interviews/simulate` 接口保持兼容。
+- **用户画像建议闭环**：记录技能证据和来源，模型或规则只产生待审核建议，用户确认后才写入技能画像。
 - **Markdown 回答渲染**：聊天回答支持标题、列表、粗体、行内代码和代码块渲染，避免直接暴露 `###` 等 Markdown 标记。
 - **岗位自动采集**：支持每日定时采集、搜索 URL 模板、列表页进入详情页二次抓取、采集日志。
 - **前端完整交互**：Vue 3 + Element Plus 实现工作台、知识库、智能对话、岗位中心、简历匹配、模拟面试和复盘报告。
@@ -190,6 +194,26 @@ BOSS_BROWSER_HEADLESS=false
 
 CHAT_MEMORY_MAX_MESSAGES=6
 AGENT_REPLAN_MAX_ATTEMPTS=1
+ZYAGENT_TASK_OWNER_ID=local-user
+ZYAGENT_TASK_MAX_PLAN_STEPS=12
+ZYAGENT_TASK_MAX_TOOL_CALLS=8
+ZYAGENT_TASK_TIMEOUT_MS=120000
+ZYAGENT_TASK_TOOL_TIMEOUT_MS=15000
+ZYAGENT_TASK_MAX_RETRIES=1
+ZYAGENT_TASK_STRICT_PERSISTENCE=false
+ZYAGENT_RETRIEVAL_VECTOR_TOP_K=20
+ZYAGENT_RETRIEVAL_KEYWORD_TOP_K=20
+ZYAGENT_RETRIEVAL_FUSE_LIMIT=30
+ZYAGENT_RETRIEVAL_RANK_CONSTANT=60
+ZYAGENT_RETRIEVAL_RERANK_LIMIT=8
+ZYAGENT_RERANK_ENABLED=false
+ZYAGENT_RERANK_ENDPOINT=
+ZYAGENT_RERANK_TIMEOUT_MS=1500
+ZYAGENT_RERANK_MAX_CANDIDATES=30
+ZYAGENT_RERANK_MAX_CONTENT_CHARS=600
+ZYAGENT_INTERVIEW_MAX_TURNS=8
+ZYAGENT_INTERVIEW_MAX_FOLLOW_UPS=1
+ZYAGENT_INTERVIEW_MODEL_TIMEOUT_MS=8000
 ZYAGENT_MCP_ENABLED=true
 STRUCTURED_OUTPUT_ENABLED=true
 ```
@@ -200,6 +224,19 @@ STRUCTURED_OUTPUT_ENABLED=true
 - 当前默认聊天模型是 `deepseek-v4-pro`。DeepSeek 官方仍保留 `deepseek-chat` 兼容名，但该旧名会路由到 `deepseek-v4-flash` 非思考模式，并计划下线；本项目不再默认使用 `deepseek-chat`。
 - `EMBEDDING_PROVIDER=hash` 表示使用本地 hash embedding，方便无外部 embedding 服务时演示。
 - 如果使用 `docker-compose.yml` 默认 MySQL，`MYSQL_PASSWORD` 应为 `zyagent`。
+- `ZYAGENT_TASK_*` 控制 Agent 任务的执行上限和归属者：`MAX_PLAN_STEPS`/`MAX_TOOL_CALLS` 限制单次执行的步骤与工具调用数，`TOOL_TIMEOUT_MS` 是单工具超时，`MAX_RETRIES` 只对幂等只读工具生效。`STRICT_PERSISTENCE=false`（默认）时数据库不可用会降级为本地演示并在 SSE `status` 事件中标记 `persistence=memory`；设为 `true` 则任务无法落库时直接报错。
+- `ZYAGENT_RETRIEVAL_*` 控制 Hybrid 检索：`VECTOR_TOP_K`/`KEYWORD_TOP_K` 是两路各自召回数（默认 20），`FUSE_LIMIT` 是 RRF 融合后的候选上限（默认 30），`RERANK_LIMIT` 是最终注入提示词的引用数（默认 8）。
+- `ZYAGENT_RERANK_*` 是**可插拔**的二阶段重排：默认 `ENABLED=false`，此时使用本地 RRF 顺序并在检索追踪中标注 `rerank=rrf_fallback`（不声称 cross-encoder 已运行）。启用后需配置 `ENDPOINT`（外部 cross-encoder 服务），并受 `TIMEOUT_MS`/`MAX_CANDIDATES`/`MAX_CONTENT_CHARS` 约束；调用超时或异常会**自动降级**为 `rrf_fallback` 且标记 `status=failed`，不阻断回答。
+- `ZYAGENT_INTERVIEW_*` 控制模拟面试：`MAX_TURNS` 单会话最大轮数、`MAX_FOLLOW_UPS` 每题最大追问数、`MODEL_TIMEOUT_MS` 面试官模型调用超时。
+- 面试官默认使用**确定性规则实现** `RuleBasedInterviewAgent`（离线可跑、结果可复现）；`InterviewAgent` 是端口，可替换为 LLM 实现。模型输出无法解析或超时时会写入**有标识的** `usable=false` 评价（分数为 0 且带 note），不会被当作有效评分。
+- 面试评价完成后会生成**待审核**的画像建议（`sourceType=INTERVIEW`，`sourceId=会话#轮次`），不会自动写入画像。
+- 画像的熟练度（`level`）与**系统置信度**（`confidence`）分开记录；每次写入都会追加一条证据（`profile_skill_evidence`）与一条版本历史（`profile_skill_history`），支持拒绝、更正与删除。
+- 手动更正技能时可带 `expectedVersion` 做乐观并发校验，版本不一致返回 409，避免覆盖他人修改。
+- 岗位匹配会读取**已确认画像技能**并输出 `profileEvidence`（技能 ← 来源#引用，置信度）；画像不可用时退化为纯简历匹配。
+- 当前为单用户 demo：owner 由 `ZYAGENT_TASK_OWNER_ID` 经 `CurrentUserProvider` 提供，**不代表已具备多租户隔离**。
+- **任务状态是一等状态**：`chat_session` 保存 `task_type / active_skill / current_day`（`ChatTaskState`），它是路由 Active Skill 的**权威来源**；聊天记录里助手消息的 Skill 只在任务状态缺失时兜底。`DayN` 是任务进度（`currentDay`），不是新的 Skill。
+- **Skill 路由**采用「会话级 Active Skill + 三态决策」：每轮先判断当前 Active Skill 能否处理本轮请求 —— 能则 `CONTINUE`；命中其他 Skill 触发词或出现定义型新问题则 `SWITCH`；请求指代不明且无可继承任务则 `CLARIFY`（向用户确认，而不是硬选）。决策顺序：显式模式 → 元反馈（`chat_skill`）→ **执行已有计划某天（学习导师，任务继续）** → **学习计划创建/覆盖请求（规则优先，避免被判成复盘类任务）** → Active Skill 判断 → LLM 意图分类（置信度 ≥ 0.72）→ 上下文启发式 → 声明式触发词表 → 澄清 → 兜底。
+- Skill 切换时**上下文按 Skill 作用域隔离**：只把当前任务那次对话以来的消息注入提示词，避免上一个 Skill 的长输出污染新任务；澄清场景保留更宽上下文。前端「路由决策」面板显示本次是沿用、切换还是澄清。
 
 ## 启动基础设施
 
@@ -280,7 +317,28 @@ Start-Process "npm.cmd" "run dev -- --host 127.0.0.1" -WorkingDirectory ".\front
 | `PUT` | `/api/job-sources/{id}` | 更新采集源 |
 | `POST` | `/api/job-sources/{id}/collect` | 采集单个来源 |
 | `POST` | `/api/jobs/{jobId}/match-resume` | 简历岗位匹配 |
-| `POST` | `/api/interviews/simulate` | 模拟面试 |
+| `POST` | `/api/interviews` | 创建面试会话并生成首题 |
+| `POST` | `/api/interviews/{sessionId}/turns` | 提交当前轮回答（幂等 requestId） |
+| `POST` | `/api/interviews/{sessionId}/abort` | 中止面试会话 |
+| `GET` | `/api/interviews` | 分页查询面试历史 |
+| `POST` | `/api/interviews/simulate` | 模拟面试（兼容旧接口） |
+| `POST` | `/api/interviews/{sessionId}/answer` | 提交面试回答（兼容旧接口） |
+| `GET` | `/api/interviews/{sessionId}` | 查询面试会话与轮次 |
+| `POST` | `/api/interviews/{sessionId}/complete` | 结束面试会话 |
+| `GET` | `/api/agent/tasks/{taskId}` | 查询 Agent 任务状态 |
+| `GET` | `/api/agent/tasks/{taskId}/steps` | 查询 Agent 任务步骤 |
+| `POST` | `/api/agent/tasks/{taskId}/retry` | 显式重试已失败/中断的 Agent 任务 |
+| `GET` | `/api/profile` | 查询画像视图（技能 + 证据） |
+| `GET` | `/api/profile/skills` | 查询已确认技能画像 |
+| `PUT` | `/api/profile/skills/{skillKey}` | 手动新增/更正技能（可带 expectedVersion 防并发覆盖） |
+| `DELETE` | `/api/profile/skills/{skillKey}` | 删除技能 |
+| `GET` | `/api/profile/skills/{skillKey}/evidence` | 查询技能证据条目 |
+| `GET` | `/api/profile/skills/{skillKey}/history` | 查询技能版本/审计历史 |
+| `GET` | `/api/profile/suggestions` | 查询画像建议（可按 state 过滤） |
+| `POST` | `/api/profile/suggestions` | 创建技能画像更新建议 |
+| `PUT` | `/api/profile/suggestions/{id}` | 更正待审核建议 |
+| `POST` | `/api/profile/suggestions/{id}/approve` | 审核并确认技能画像建议 |
+| `POST` | `/api/profile/suggestions/{id}/reject` | 拒绝技能画像建议 |
 | `POST` | `/api/reviews` | 生成复盘报告 |
 
 ## 验证命令
@@ -291,12 +349,20 @@ Start-Process "npm.cmd" "run dev -- --host 127.0.0.1" -WorkingDirectory ".\front
 .\.tools\apache-maven-3.9.9\bin\mvn.cmd -q -f backend\pom.xml test
 ```
 
-前端测试：
+前端测试（必须在 `frontend\` 目录下运行：`markdownStyles.test.mjs` 以当前工作目录解析 `src\styles.css`）：
 
 ```powershell
 cd frontend
-node --test src\chat\chatStream.test.mjs src\chat\markdownRenderer.test.mjs src\chat\uploadActions.test.mjs
+node --test src\chat\chatStream.test.mjs src\chat\markdownRenderer.test.mjs src\chat\markdownStyles.test.mjs src\chat\chatSessionStore.test.mjs src\chat\uploadActions.test.mjs
 ```
+
+检索评测（离线，无需 Milvus/MySQL）：
+
+```powershell
+.\.tools\apache-maven-3.9.9\bin\mvn.cmd -q -f backend\pom.xml test -Dtest=RagRetrievalEvaluationTest
+```
+
+评测集与指标定义见 `docs/evaluation/README.md`。
 
 前端构建：
 
@@ -380,7 +446,7 @@ BOSS 采集使用 Playwright Java 打开本地可视化浏览器。首次使用�
 
 ## 简历项目描述
 
-zyagent 是一个基于 Spring Boot、Spring AI DeepSeek、Milvus、Redis、MySQL 和 Vue 3 构建的个人知识成长与求职 Agent 平台。项目实现了 RAG 知识库、Chat Memory、Tool Calling、结构化输出、MCP Server、Plan-Execute-Replan、Multi-Agent Collaboration 和 SSE 流式对话能力，支持学习资料问答、简历优化、岗位 JD 解析、岗位匹配、模拟面试、复盘报告和每日岗位采集。系统通过 `Planner`、`Retriever`、`Evaluator`、`Reviewer` 子 Agent 共享 memory 与中间结果协议完成任务，通过 MySQL 持久化会话、文档、岗位和工具调用记录，通过 Milvus 提供语义检索，并在前端展示可追溯的工具轨迹、RAG 引用来源、token 用量、路由决策和 multi-agent 协作链路。
+zyagent 是一个基于 Spring Boot、Spring AI、MySQL、Milvus、Redis 和 Vue 3 构建的个人知识成长与求职 Agent 平台，覆盖资料沉淀、岗位解析、简历匹配、模拟面试、复盘和学习补强。系统以 `SkillRouter` 与 `AgentOrchestrator` 负责路由和 Plan-Execute-Replan，使用 `Planner`、`Retriever`、`Evaluator`、`Reviewer` 子 Agent 共享中间产物完成协作；以 MySQL 持久化会话、消息、任务、步骤和工具调用状态，支持任务重试、幂等键、超时与资源上限。RAG 采用向量与关键词并行召回、RRF 融合去重和可插拔 reranker，外部重排失败时自动回退到本地 RRF。多轮面试会持久化回答、评价、追问和复盘结果，并生成可审核的画像技能建议；已确认画像会参与岗位匹配，并为学习计划提供缺口输入。前端通过 SSE 展示路由、计划、工具步骤、任务状态、RAG 引用和 multi-agent 协作链路。
 
 ## 注意事项
 

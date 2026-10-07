@@ -37,6 +37,8 @@ public class PlannerAgent {
             case STUDY_PLAN -> "学习计划";
             case KNOWLEDGE_QA -> "知识问答";
             case REVIEW -> "复盘改进";
+            case CHAT -> "对话澄清";
+            case CLARIFY -> "意图澄清";
             case GENERAL -> "通用问答";
         };
     }

@@ -1,12 +1,14 @@
 package com.zyagent.storage;
 
 import com.zyagent.agent.AgentMode;
+import com.zyagent.agent.ChatTaskState;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -65,7 +67,7 @@ public class ChatRepository {
             SELECT id, session_id, role, content, references_json, created_at
             FROM chat_message
             WHERE session_id = ?
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, id ASC
             """, (rs, rowNum) -> new ChatMessageView(
             rs.getString("id"),
             rs.getString("session_id"),
@@ -82,6 +84,21 @@ public class ChatRepository {
             VALUES (?, ?, ?, ?, ?, ?)
             """, UUID.randomUUID().toString(), sessionId, role, content == null ? "" : content, referencesJson, Timestamp.valueOf(LocalDateTime.now()));
         jdbcTemplate.update("UPDATE chat_session SET updated_at = ? WHERE id = ?", Timestamp.valueOf(LocalDateTime.now()), sessionId);
+    }
+
+    /** 会话级任务状态：路由的权威来源（用户当前在做什么）。 */
+    public Optional<ChatTaskState> findTaskState(String sessionId) {
+        return jdbcTemplate.query("""
+            SELECT task_type, active_skill, current_day FROM chat_session WHERE id = ?
+            """, (rs, rowNum) -> new ChatTaskState(
+            rs.getString("task_type"), rs.getString("active_skill"), rs.getInt("current_day")), sessionId)
+            .stream().findFirst();
+    }
+
+    public void saveTaskState(String sessionId, ChatTaskState state) {
+        jdbcTemplate.update("""
+            UPDATE chat_session SET task_type = ?, active_skill = ?, current_day = ? WHERE id = ?
+            """, state.taskType(), state.activeSkill(), state.currentDay(), sessionId);
     }
 
     public int deleteSession(String sessionId) {

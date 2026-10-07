@@ -5,6 +5,9 @@ import com.zyagent.config.ZyagentProperties;
 import com.zyagent.match.JobMatchReport;
 import com.zyagent.match.ResumeJobMatcher;
 import com.zyagent.match.ResumeProfile;
+import com.zyagent.profile.ProfileService;
+import com.zyagent.profile.UserSkill;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,12 +25,15 @@ public class JobController {
     private final JobService jobService;
     private final JobCollectorService collectorService;
     private final ZyagentProperties properties;
+    private final ObjectProvider<ProfileService> profileServiceProvider;
     private final ResumeJobMatcher matcher = new ResumeJobMatcher();
 
-    public JobController(JobService jobService, JobCollectorService collectorService, ZyagentProperties properties) {
+    public JobController(JobService jobService, JobCollectorService collectorService, ZyagentProperties properties,
+                         ObjectProvider<ProfileService> profileServiceProvider) {
         this.jobService = jobService;
         this.collectorService = collectorService;
         this.properties = properties;
+        this.profileServiceProvider = profileServiceProvider;
     }
 
     @PostMapping("/import-text")
@@ -65,7 +71,20 @@ public class JobController {
     public ApiResponse<JobMatchReport> matchResume(@PathVariable String jobId, @RequestBody MatchResumeRequest request) {
         JobPosting posting = jobService.findById(jobId).orElseThrow(() -> new IllegalArgumentException("岗位不存在：" + jobId));
         ResumeProfile resume = new ResumeProfile("request-resume", request.resumeText(), request.skills(), request.projects());
-        return ApiResponse.ok(matcher.match(resume, posting));
+        return ApiResponse.ok(matcher.match(resume, posting, confirmedSkills()));
+    }
+
+    /** 已确认画像技能；画像不可用时返回空列表，匹配退化为纯简历匹配。 */
+    private List<UserSkill> confirmedSkills() {
+        ProfileService profileService = profileServiceProvider == null ? null : profileServiceProvider.getIfAvailable();
+        if (profileService == null) {
+            return List.of();
+        }
+        try {
+            return profileService.skills(profileService.currentOwnerId());
+        } catch (RuntimeException ex) {
+            return List.of();
+        }
     }
 
     public record ImportTextRequest(String rawText, String sourceUrl) {

@@ -5,11 +5,14 @@ import com.zyagent.document.DocumentMetadata;
 import com.zyagent.document.DocumentRecord;
 import com.zyagent.document.DocumentSearchHit;
 import com.zyagent.document.KnowledgeType;
+import com.zyagent.document.retrieval.KeywordScorer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,48 +66,54 @@ public class DocumentRepository {
     }
 
     public List<DocumentSearchHit> keywordSearchHits(String query, List<KnowledgeType> types) {
-        String like = "%" + (query == null ? "" : query) + "%";
-        if (types == null || types.isEmpty()) {
-            return jdbcTemplate.query("""
-                SELECT c.document_id, d.filename, d.knowledge_type, c.chunk_index, c.content, c.vector_id
-                FROM document_chunk c
-                JOIN document d ON d.id = c.document_id
-                WHERE c.content LIKE ?
-                ORDER BY c.created_at DESC
-                LIMIT 8
-                """, (rs, rowNum) -> new DocumentSearchHit(
-                rs.getString("document_id"),
-                rs.getString("filename"),
-                KnowledgeType.valueOf(rs.getString("knowledge_type")),
-                rs.getInt("chunk_index"),
-                rs.getString("content"),
-                0.0,
-                rs.getString("vector_id")
-            ), like);
+        return keywordSearchHits(query, types, 8);
+    }
+
+    /**
+     * 关键词召回：按查询分词后任一 token 命中即召回，再用覆盖度评分并按相关性排序。
+     *
+     * <p>SQL 对 token 与知识类型做参数绑定；先取 topK 的若干倍作为候选池（按 created_at 倒序），
+     * 再在内存中按覆盖度做稳定排序 —— 同分时保持 created_at 倒序，避免中文场景依赖未验证的 FULLTEXT。
+     */
+    public List<DocumentSearchHit> keywordSearchHits(String query, List<KnowledgeType> types, int limit) {
+        List<String> tokens = KeywordScorer.tokenize(query);
+        if (tokens.isEmpty() || limit <= 0) {
+            return List.of();
         }
-        List<String> names = types.stream().map(Enum::name).toList();
-        String placeholders = String.join(",", names.stream().map(ignored -> "?").toList());
-        Object[] args = new Object[names.size() + 1];
-        args[0] = like;
-        for (int i = 0; i < names.size(); i++) {
-            args[i + 1] = names.get(i);
-        }
-        return jdbcTemplate.query("""
+        List<Object> args = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
             SELECT c.document_id, d.filename, d.knowledge_type, c.chunk_index, c.content, c.vector_id
             FROM document_chunk c
             JOIN document d ON d.id = c.document_id
-            WHERE c.content LIKE ? AND d.knowledge_type IN (%s)
-            ORDER BY c.created_at DESC
-            LIMIT 8
-            """.formatted(placeholders), (rs, rowNum) -> new DocumentSearchHit(
+            WHERE (
+            """);
+        for (int i = 0; i < tokens.size(); i++) {
+            sql.append(i == 0 ? "" : " OR ").append("c.content LIKE ?");
+            args.add("%" + KeywordScorer.escapeLike(tokens.get(i)) + "%");
+        }
+        sql.append(")");
+        if (types != null && !types.isEmpty()) {
+            sql.append(" AND d.knowledge_type IN (")
+                .append(String.join(",", types.stream().map(ignored -> "?").toList()))
+                .append(")");
+            types.forEach(type -> args.add(type.name()));
+        }
+        sql.append(" ORDER BY c.created_at DESC LIMIT ?");
+        args.add(Math.max(limit, limit * 3));
+
+        List<DocumentSearchHit> pool = jdbcTemplate.query(sql.toString(), (rs, rowNum) -> new DocumentSearchHit(
             rs.getString("document_id"),
             rs.getString("filename"),
             KnowledgeType.valueOf(rs.getString("knowledge_type")),
             rs.getInt("chunk_index"),
             rs.getString("content"),
-            0.0,
+            KeywordScorer.coverage(tokens, rs.getString("content")),
             rs.getString("vector_id")
-        ), args);
+        ), args.toArray());
+
+        List<DocumentSearchHit> scored = new ArrayList<>(pool);
+        scored.sort(Comparator.comparingDouble(DocumentSearchHit::score).reversed());
+        return scored.size() > limit ? scored.subList(0, limit) : scored;
     }
 
     public int deleteById(String documentId) {

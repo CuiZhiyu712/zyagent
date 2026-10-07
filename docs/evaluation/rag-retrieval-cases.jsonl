@@ -1,0 +1,8 @@
+{"id":"exact-technical","query":"Redis 缓存一致性","relevant":["doc-redis:3"],"vector":["doc-redis:3","doc-mysql:1","doc-other:0"],"keyword":["doc-redis:3","doc-mysql:1"],"vectorStatus":"ok","keywordStatus":"ok"}
+{"id":"semantic-paraphrase","query":"如何保证缓存和数据库的数据不冲突","relevant":["doc-redis:3"],"vector":["doc-mysql:1","doc-redis:3","doc-other:0"],"keyword":["doc-mysql:1"],"vectorStatus":"ok","keywordStatus":"ok"}
+{"id":"synonym-keyword-only","query":"SPring BOOT 自动装配原理","relevant":["doc-spring:2"],"vector":["doc-other:0","doc-mysql:1"],"keyword":["doc-spring:2","doc-spring:5"],"vectorStatus":"ok","keywordStatus":"ok"}
+{"id":"conflicting-documents","query":"项目里的 MySQL 索引优化","relevant":["doc-project:1"],"vector":["doc-project:1","doc-mysql:4"],"keyword":["doc-mysql:4","doc-project:1"],"vectorStatus":"ok","keywordStatus":"ok"}
+{"id":"knowledge-type-filter","query":"简历里的 Java 并发经验","relevant":["doc-resume:0"],"vector":["doc-resume:0","doc-study:2"],"keyword":["doc-resume:0"],"vectorStatus":"ok","keywordStatus":"ok"}
+{"id":"vector-failed-single-side","query":"JVM 垃圾回收调优","relevant":["doc-jvm:1"],"vector":[],"keyword":["doc-jvm:1","doc-mysql:0"],"vectorStatus":"failed","keywordStatus":"ok"}
+{"id":"keyword-failed-single-side","query":"线程池参数怎么设置","relevant":["doc-concurrency:2"],"vector":["doc-concurrency:2","doc-mysql:0"],"keyword":[],"vectorStatus":"ok","keywordStatus":"failed"}
+{"id":"no-relevant","query":"完全不相关的冷门主题","relevant":["doc-absent:9"],"vector":["doc-other:0","doc-mysql:1"],"keyword":["doc-mysql:1"],"vectorStatus":"ok","keywordStatus":"ok"}

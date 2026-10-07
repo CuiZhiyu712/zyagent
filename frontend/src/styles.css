@@ -119,6 +119,197 @@ body {
   grid-column: 1 / -1;
 }
 
+.form-gap {
+  margin-top: 14px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
+}
+
+.interview-turn,
+.profile-skill,
+.profile-suggestion {
+  padding: 14px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.interview-turn p,
+.profile-skill p,
+.profile-suggestion p {
+  margin: 8px 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.turn-answer {
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.turn-next {
+  color: #2563eb !important;
+}
+
+.interview-current {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #eef2ff;
+}
+
+.interview-current strong {
+  color: #3730a3;
+}
+
+.interview-current p {
+  margin: 6px 0 0;
+  color: #1e293b;
+}
+
+.evaluation-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.eval-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+}
+
+.eval-chip.fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.eval-notes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.profile-skill > div,
+.profile-suggestion > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.profile-skill span {
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.profile-skill small {
+  color: #94a3b8;
+}
+
+.observability-trace summary em.route-action {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.pipeline-trace {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.pipeline-trace summary { cursor: pointer; color: #1d4ed8; font-weight: 700; }
+.pipeline-lane { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; padding-top: 10px; }
+.pipeline-stage { min-width: 126px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; }
+.pipeline-index { display: inline-grid; width: 20px; height: 20px; place-items: center; margin-right: 4px; border-radius: 50%; color: #fff; background: #2563eb; font-size: 11px; }
+.pipeline-stage small { display: block; margin-top: 4px; color: #64748b; }
+.pipeline-stage small.success { color: #16a34a; }
+.pipeline-stage small.pending { color: #d97706; }
+.pipeline-stage small.skipped { color: #94a3b8; }
+.pipeline-stage small.failed { color: #dc2626; }
+.pipeline-stage p { margin: 6px 0 0; color: #64748b; font-size: 12px; }
+.pipeline-arrow { align-self: center; color: #94a3b8; font-size: 18px; }
+
+.message-content .markdown-table-wrap {
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.message-content .markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 13px;
+}
+
+.message-content .markdown-table th,
+.message-content .markdown-table td {
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.message-content .markdown-table th {
+  color: #1e3a8a;
+  background: #eff6ff;
+  font-weight: 700;
+}
+
+.message-content .markdown-table tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.message-content .answer-audit {
+  margin-top: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.message-content .answer-audit summary {
+  padding: 8px 10px;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.message-content .answer-audit-body {
+  padding: 2px 10px 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.profile-detail {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.profile-detail li {
+  margin-bottom: 3px;
+}
+
 .panel,
 .split {
   min-height: 600px;
@@ -584,6 +775,109 @@ body {
   background: #ffffff;
 }
 
+.agent-details {
+  margin: 0 0 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.agent-details summary {
+  padding: 8px 10px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.agent-details summary::marker {
+  color: #64748b;
+}
+
+.agent-details[open] summary {
+  border-bottom: 1px solid #e2e8f0;
+  color: #1d4ed8;
+}
+
+  .agent-details-body {
+    padding: 2px 10px 8px;
+  }
+
+  .audit-details {
+    margin: 0 0 10px;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    background: #fffbeb;
+  }
+
+  .audit-details summary {
+    padding: 8px 10px;
+    color: #92400e;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    list-style-position: inside;
+  }
+
+  .audit-details[open] summary {
+    border-bottom: 1px solid #fde68a;
+  }
+
+  .audit-details-body {
+    padding: 2px 10px 8px;
+    color: #78350f;
+  }
+
+  .audit-section {
+    padding: 8px 0;
+    border-bottom: 1px solid #fde68a;
+  }
+
+  .audit-section:last-child {
+    border-bottom: 0;
+  }
+
+  .audit-section > strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #92400e;
+    font-size: 12px;
+  }
+
+  .audit-section p,
+  .audit-section ul {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .audit-section ul {
+    padding-left: 18px;
+  }
+
+  .audit-evidence-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .audit-evidence-list span {
+    padding: 3px 6px;
+    border-radius: 5px;
+    background: #fef3c7;
+    color: #78350f;
+    font-size: 11px;
+  }
+
+  .audit-muted {
+    color: #92400e;
+  }
+
+  .audit-legacy {
+    padding-top: 8px;
+  }
+
 .message-content {
   line-height: 1.75;
   word-break: break-word;
@@ -627,6 +921,15 @@ body {
   border-radius: 8px;
   color: #e5e7eb;
   background: #111827;
+}
+
+.message-content .code-block code {
+  display: block;
+  padding: 0;
+  color: #e5e7eb;
+  background: transparent;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: pre;
 }
 
 .cursor {
@@ -968,6 +1271,84 @@ body {
   line-height: 1.6;
 }
 
+.trace-task-state.ok,
+.trace-step-state.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.trace-task-state.fail,
+.trace-step-state.fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.trace-task-state.active,
+.trace-step-state.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.trace-task-state.muted,
+.trace-step-state.muted {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.observability-trace .trace-error {
+  color: #b91c1c;
+}
+
+.trace-retry {
+  margin: 0 10px 10px;
+  padding: 5px 12px;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trace-retry:hover {
+  background: #e0e7ff;
+}
+
+.trace-steps {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.trace-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.trace-step-no {
+  color: #64748b;
+}
+
+.trace-step-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+}
+
+.trace-step-state {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
 .reference-trace {
   margin-bottom: 10px;
   border: 1px solid #dcfce7;
@@ -990,6 +1371,47 @@ body {
   color: #64748b;
   font-size: 12px;
   font-style: normal;
+  font-weight: 600;
+}
+
+.reference-trace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 8px;
+}
+
+.channel-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.channel-chip.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.channel-chip.fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.channel-chip.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.channel-chip.muted {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
+.channel-chip.note {
+  background: #eff6ff;
+  color: #1d4ed8;
   font-weight: 600;
 }
 

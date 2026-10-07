@@ -9,6 +9,7 @@ import com.zyagent.agent.AgentPlanTest;
 import com.zyagent.agent.AgentObservabilityTest;
 import com.zyagent.agent.ChatMemoryContextTest;
 import com.zyagent.agent.MultiAgentCollaborationTest;
+import com.zyagent.agent.PromptAdvisorChainTest;
 import com.zyagent.job.JobDescriptionParserTest;
 import com.zyagent.job.BossJobParserTest;
 import com.zyagent.job.JobCollectorTest;
@@ -18,6 +19,7 @@ import com.zyagent.structured.StructuredOutputTest;
 import com.zyagent.tool.AgentToolServiceTest;
 import com.zyagent.skill.SkillRouterTest;
 import com.zyagent.skill.SkillRouterDecisionTest;
+import com.zyagent.skill.ContextIntentClassifierTest;
 import com.zyagent.tool.ToolRegistryTest;
 
 public class TestRunner {
@@ -36,10 +38,12 @@ public class TestRunner {
         AgentObservabilityTest.run();
         MultiAgentCollaborationTest.run();
         ChatMemoryContextTest.run();
+        PromptAdvisorChainTest.run();
         StructuredOutputTest.run();
         AgentToolServiceTest.run();
         SkillRouterTest.run();
         SkillRouterDecisionTest.run();
+        ContextIntentClassifierTest.run();
         StreamChunkerTest.run();
         System.out.println("All core tests passed.");
     }

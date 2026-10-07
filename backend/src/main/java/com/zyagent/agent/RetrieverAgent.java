@@ -3,6 +3,7 @@ package com.zyagent.agent;
 import com.zyagent.document.DocumentSearchHit;
 import com.zyagent.document.DocumentSearchResponse;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,17 +34,23 @@ public class RetrieverAgent {
             .mapToDouble(DocumentSearchHit::score)
             .average()
             .orElse(0D);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("searchMode", references.searchMode());
+        metadata.put("hitCount", references.hits().size());
+        metadata.put("averageScore", averageScore);
+        metadata.put("topEvidence", references.hits().stream().limit(3).map(this::preview).toList());
+        if (references.trace() != null) {
+            metadata.put("vectorStatus", references.trace().vectorStatus());
+            metadata.put("keywordStatus", references.trace().keywordStatus());
+            metadata.put("rerankMode", references.trace().rerankMode());
+            metadata.put("rerankStatus", references.trace().rerankStatus());
+        }
         return List.of(new AgentArtifact(
             id("evidence"),
             SubAgentRole.RETRIEVER,
             "evidence",
             "Retriever 获取 " + references.hits().size() + " 条 RAG 命中，搜索模式 " + references.searchMode() + "。",
-            Map.of(
-                "searchMode", references.searchMode(),
-                "hitCount", references.hits().size(),
-                "averageScore", averageScore,
-                "topEvidence", references.hits().stream().limit(3).map(this::preview).toList()
-            ),
+            metadata,
             evidenceRefs,
             Math.min(0.95, Math.max(0.35, averageScore))
         ));

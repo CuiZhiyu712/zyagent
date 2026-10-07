@@ -4,7 +4,7 @@
       <span>Skill</span>
       <strong>{{ skill.name || skill.id }}</strong>
     </div>
-    <details v-if="plan" open>
+    <details v-if="plan">
       <summary>Plan-Executor</summary>
       <ol>
         <li v-for="step in plan.steps || []" :key="stepKey(step)" class="plan-step">

@@ -4,8 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zyagent.agent.AgentMode;
 import com.zyagent.agent.AgentOrchestrator;
+import com.zyagent.agent.AgentPipelineTrace;
+import com.zyagent.agent.AgentPlanStep;
 import com.zyagent.agent.AgentResult;
 import com.zyagent.agent.TokenUsage;
+import com.zyagent.agent.task.AgentExecutionListener;
+import com.zyagent.agent.task.AgentTask;
+import com.zyagent.agent.task.AgentTaskService;
+import com.zyagent.agent.task.AgentTaskStatusUpdate;
+import com.zyagent.agent.task.AgentTaskStep;
 import com.zyagent.common.ApiResponse;
 import com.zyagent.storage.ChatMessageView;
 import com.zyagent.storage.ChatRepository;
@@ -32,17 +39,20 @@ import java.util.UUID;
 @RequestMapping("/api/chat")
 public class ChatController {
     private final AgentOrchestrator orchestrator;
+    private final AgentTaskService agentTaskService;
     private final ChatRepository chatRepository;
     private final ToolCallRecordRepository toolCallRepository;
     private final ObjectMapper objectMapper;
 
     public ChatController(
         AgentOrchestrator orchestrator,
+        AgentTaskService agentTaskService,
         ObjectProvider<ChatRepository> chatRepository,
         ObjectProvider<ToolCallRecordRepository> toolCallRepository,
         ObjectMapper objectMapper
     ) {
         this.orchestrator = orchestrator;
+        this.agentTaskService = agentTaskService;
         this.chatRepository = chatRepository.getIfAvailable();
         this.toolCallRepository = toolCallRepository.getIfAvailable();
         this.objectMapper = objectMapper;
@@ -116,10 +126,19 @@ public class ChatController {
         Thread worker = new Thread(() -> {
             String sessionId = ensureSession(request);
             StringBuilder answer = new StringBuilder();
+            AgentOrchestrator.AgentRun run = null;
             try {
                 saveUserMessage(sessionId, request.message());
-                AgentOrchestrator.AgentRun run = orchestrator.prepare(request.agentMode(), request.message(), sessionId);
+                run = orchestrator.prepare(request.agentMode(), request.message(), sessionId,
+                    request.idempotencyKey(), streamingStepListener(emitter));
+                if (run.reused()) {
+                    // 幂等键命中已有任务：不重复执行，直接把当前状态与结果告知客户端。
+                    emitTerminal(emitter, run.task());
+                    emitter.complete();
+                    return;
+                }
                 saveTools(sessionId, run.skill().id(), run.toolResults());
+                emitRunning(emitter, run);
                 emitter.send(SseEmitter.event().name("skill").data(run.skill()));
                 emitter.send(SseEmitter.event().name("route").data(run.routeDecision()));
                 emitter.send(SseEmitter.event().name("plan").data(run.plan()));
@@ -127,6 +146,7 @@ public class ChatController {
                 emitter.send(SseEmitter.event().name("metrics").data(run.metrics()));
                 emitter.send(SseEmitter.event().name("memory").data(run.memorySnapshot()));
                 emitter.send(SseEmitter.event().name("collaboration").data(run.collaborationTrace()));
+                emitter.send(SseEmitter.event().name("pipeline").data(pipeline(run)));
                 if (run.references() != null) {
                     emitter.send(SseEmitter.event().name("references").data(run.references()));
                 }
@@ -139,12 +159,21 @@ public class ChatController {
                     }
                 });
                 TokenUsage usage = orchestrator.estimateUsage(run, request.message(), sessionId, answer.toString());
+                AgentTask task = orchestrator.complete(run, answer.toString());
+                emitTerminal(emitter, task);
                 emitter.send(SseEmitter.event().name("usage").data(usage));
-                saveAssistantMessage(sessionId, answer.toString(), run, usage);
+                saveAssistantMessage(sessionId, answer.toString(), run, usage, task);
                 emitter.complete();
             } catch (RuntimeException | IOException ex) {
+                if (run != null) {
+                    try {
+                        emitTerminal(emitter, orchestrator.fail(run, "STREAM_ERROR", ex.getMessage()));
+                    } catch (RuntimeException | IOException persistenceFailure) {
+                        // Emitter may already be closed or persistence may be strict; the stored task state stays authoritative.
+                    }
+                }
                 if (!answer.isEmpty()) {
-                    saveAssistantMessage(sessionId, answer.toString(), "partial", null);
+                    saveAssistantMessage(sessionId, answer.toString(), "partial", null, null, null, List.of(), null, null, null, null, null, null);
                 }
                 emitter.completeWithError(ex);
             }
@@ -152,6 +181,53 @@ public class ChatController {
         worker.setName("zyagent-sse-worker");
         worker.start();
         return emitter;
+    }
+
+    private void emitRunning(SseEmitter emitter, AgentOrchestrator.AgentRun run) throws IOException {
+        emitter.send(SseEmitter.event().name("task").data(run.task()));
+        emitter.send(SseEmitter.event().name("status").data(AgentTaskStatusUpdate.from(run.task(), orchestrator.persistenceMode())));
+    }
+
+    private AgentPipelineTrace pipeline(AgentOrchestrator.AgentRun run) {
+        List<String> tools = run.toolResults().stream().map(result -> result.toolName()).toList();
+        List<String> agents = run.collaborationTrace().agents().stream()
+            .map(trace -> trace.role().name())
+            .toList();
+        return AgentPipelineTrace.of(run.routeDecision().category().name(), tools, agents);
+    }
+
+    /**
+     * 步骤监听：每个步骤开始/结束时持久化并把 {@code step} 事件推给前端。
+     *
+     * <p>客户端断流时只静默跳过推送，不中断执行，保证任务仍能到达确定终态。
+     */
+    private AgentExecutionListener streamingStepListener(SseEmitter emitter) {
+        return new AgentExecutionListener() {
+            @Override
+            public void onStepStarted(String taskId, int stepNo, AgentPlanStep step) {
+                agentTaskService.saveStep(taskId, stepNo, step);
+                sendQuietly(emitter, AgentTaskStep.from(taskId, stepNo, step));
+            }
+
+            @Override
+            public void onStepFinished(String taskId, int stepNo, AgentPlanStep step) {
+                agentTaskService.saveStep(taskId, stepNo, step);
+                sendQuietly(emitter, AgentTaskStep.from(taskId, stepNo, step));
+            }
+        };
+    }
+
+    private void sendQuietly(SseEmitter emitter, Object step) {
+        try {
+            emitter.send(SseEmitter.event().name("step").data(step));
+        } catch (IOException | RuntimeException ignored) {
+            // 断流或推送失败不影响执行；已持久化的任务状态仍然权威。
+        }
+    }
+
+    private void emitTerminal(SseEmitter emitter, AgentTask task) throws IOException {
+        emitter.send(SseEmitter.event().name("task").data(task));
+        emitter.send(SseEmitter.event().name("status").data(AgentTaskStatusUpdate.from(task, orchestrator.persistenceMode())));
     }
 
     private String ensureSession(ChatRequest request) {
@@ -180,15 +256,15 @@ public class ChatController {
     }
 
     private void saveAssistantMessage(String sessionId, String message, AgentResult result) {
-        saveAssistantMessage(sessionId, message, result.skill().id(), result.references(), result.routeDecision(), result.plan(), result.toolResults(), result.runMetrics(), result.tokenUsage(), result.memorySnapshot(), result.collaborationTrace());
+        saveAssistantMessage(sessionId, message, result.skill().id(), result.references(), result.routeDecision(), result.plan(), result.toolResults(), result.runMetrics(), result.tokenUsage(), result.memorySnapshot(), result.collaborationTrace(), null, null);
     }
 
     private void saveAssistantMessage(String sessionId, String message, String skillId, Object references) {
-        saveAssistantMessage(sessionId, message, skillId, references, null, null, List.of(), null, null, null, null);
+        saveAssistantMessage(sessionId, message, skillId, references, null, null, List.of(), null, null, null, null, null, null);
     }
 
-    private void saveAssistantMessage(String sessionId, String message, AgentOrchestrator.AgentRun run, TokenUsage usage) {
-        saveAssistantMessage(sessionId, message, run.skill().id(), run.references(), run.routeDecision(), run.plan(), run.toolResults(), run.metrics(), usage, run.memorySnapshot(), run.collaborationTrace());
+    private void saveAssistantMessage(String sessionId, String message, AgentOrchestrator.AgentRun run, TokenUsage usage, AgentTask task) {
+        saveAssistantMessage(sessionId, message, run.skill().id(), run.references(), run.routeDecision(), run.plan(), run.toolResults(), run.metrics(), usage, run.memorySnapshot(), run.collaborationTrace(), task, pipeline(run));
     }
 
     private void saveAssistantMessage(
@@ -202,7 +278,9 @@ public class ChatController {
         Object metrics,
         Object usage,
         Object memory,
-        Object collaboration
+        Object collaboration,
+        Object task,
+        Object pipeline
     ) {
         if (chatRepository != null) {
             try {
@@ -215,6 +293,10 @@ public class ChatController {
                 payload.put("usage", usage);
                 payload.put("memory", memory);
                 payload.put("collaboration", collaboration);
+                payload.put("pipeline", pipeline);
+                if (task != null) {
+                    payload.put("task", task);
+                }
                 if (references != null) {
                     payload.put("references", references);
                 }
@@ -244,7 +326,7 @@ public class ChatController {
         return message.length() > 18 ? message.substring(0, 18) : message;
     }
 
-    public record ChatRequest(String sessionId, String message, AgentMode agentMode) {
+    public record ChatRequest(String sessionId, String message, AgentMode agentMode, String idempotencyKey) {
     }
 
     public record CreateSessionRequest(String sessionId, String title, AgentMode agentMode) {
