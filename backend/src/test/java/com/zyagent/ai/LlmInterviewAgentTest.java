@@ -29,6 +29,7 @@ class LlmInterviewAgentTest {
         assertEquals(1, client.calls);
         assertTrue(client.systemPrompt.contains("只输出 JSON"));
         assertTrue(client.systemPrompt.contains("{\"question\":\"...\",\"focus\":\"...\"}"));
+        assertTrue(client.systemPrompt.contains("每次只考察一个主题"));
         assertTrue(client.userPrompt.contains("JD 唯一内容：面向高并发订单系统的后端岗位"));
         assertTrue(client.userPrompt.contains("上一轮问题：Redis 缓存如何设计？"));
         assertTrue(client.userPrompt.contains("上一轮回答：项目上线后缓存命中率提升了 32%。"));
@@ -95,6 +96,8 @@ class LlmInterviewAgentTest {
         assertTrue(client.userPrompt.contains("是否允许追问：true"));
         assertTrue(client.systemPrompt.contains("证据必须从回答原文逐字摘录"));
         assertTrue(client.systemPrompt.contains("不得改写、概括或补造证据"));
+        assertTrue(client.systemPrompt.contains(
+            "追问问题必须明确引用候选人回答中尚未说明的具体信息或遗漏"));
     }
 
     @Test
