@@ -418,7 +418,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from './api'
 import ChatWorkspace from './components/chat/ChatWorkspace.vue'
 import { extractDroppedFile, knowledgeTypeLabel } from './chat/uploadActions'
-import { buildInterviewPayload } from './interview/interviewPayload.js'
+import { buildInterviewPayload, findInterviewJob } from './interview/interviewPayload.js'
 
 const active = ref('dashboard')
 const documents = ref([])
@@ -448,6 +448,7 @@ const currentQuestion = computed(() => {
   const pending = [...interviewTurns.value].reverse().find(turn => turn?.state === 'QUESTION_READY')
   return pending ? pending.question : ''
 })
+const interviewSelectedJob = computed(() => findInterviewJob(jobs.value, interview.jobId))
 const canAnswer = computed(() =>
   interviewSession.value?.state === 'IN_PROGRESS' && Boolean(currentQuestion.value)
 )
@@ -735,7 +736,7 @@ async function matchResume() {
 
 async function simulateInterview() {
   try {
-    const details = await api.createInterview(buildInterviewPayload(interview, selectedJob.value))
+    const details = await api.createInterview(buildInterviewPayload(interview, interviewSelectedJob.value))
     interviewSession.value = details.session
     interviewTurns.value = details.turns || []
     interviewResult.value = ''
