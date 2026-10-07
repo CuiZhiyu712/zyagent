@@ -92,8 +92,19 @@ public class InterviewAgentService {
             List<String> evidence = requiredTextArray(node, "evidence", "证据");
             validateEvidence(evidence, answer);
 
-            boolean requestedFollowUp = node.path("followUp").asBoolean(false);
-            String requestedFollowUpQuestion = node.path("followUpQuestion").asText(null);
+            JsonNode followUpNode = node.get("followUp");
+            if (followUpNode == null || !followUpNode.isBoolean()) {
+                throw new EvaluationValidationException("追问标记必须是布尔值");
+            }
+            JsonNode followUpQuestionNode = node.get("followUpQuestion");
+            if (followUpQuestionNode == null
+                || (!followUpQuestionNode.isTextual() && !followUpQuestionNode.isNull())) {
+                throw new EvaluationValidationException("追问问题必须是字符串或 null");
+            }
+            boolean requestedFollowUp = followUpNode.booleanValue();
+            String requestedFollowUpQuestion = followUpQuestionNode.isNull()
+                ? null
+                : followUpQuestionNode.textValue();
             if (requestedFollowUp && (requestedFollowUpQuestion == null || requestedFollowUpQuestion.isBlank())) {
                 throw new EvaluationValidationException("追问必须包含非空追问问题");
             }

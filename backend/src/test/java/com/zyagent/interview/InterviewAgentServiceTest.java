@@ -165,6 +165,27 @@ class InterviewAgentServiceTest {
     }
 
     @Test
+    void rejectsMissingOrNonBooleanFollowUp() throws Exception {
+        assertUnusable(withoutJsonField(VALID_EVALUATION_JSON, "followUp"), "candidate answer", "追问");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "followUp", "\"true\""),
+            "candidate answer", "追问");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "followUp", "1"),
+            "candidate answer", "追问");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "followUp", "null"),
+            "candidate answer", "追问");
+    }
+
+    @Test
+    void rejectsMissingOrNonTextFollowUpQuestionEvenWhenFollowUpIsFalse() throws Exception {
+        assertUnusable(withoutJsonField(VALID_EVALUATION_JSON, "followUpQuestion"),
+            "candidate answer", "追问");
+        for (String question : List.of("123", "{\"question\":\"more\"}", "[\"more\"]")) {
+            assertUnusable(withJsonField(VALID_EVALUATION_JSON, "followUpQuestion", question),
+                "candidate answer", "追问");
+        }
+    }
+
+    @Test
     void followUpOnlyWhenAllowedAndProvided() {
         String withFollowUp = "{\"technicalCorrectness\":2,\"completeness\":2,\"projectEvidence\":1,"
             + "\"expressionStructure\":2,\"explanations\":[],\"evidence\":[],\"followUp\":true,"
