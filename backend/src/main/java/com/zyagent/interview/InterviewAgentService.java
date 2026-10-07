@@ -60,11 +60,12 @@ public class InterviewAgentService {
             return new QuestionPlan(fallbackQuestion(session), false, "面试官模型调用超时或不可用，使用本地兜底问题");
         }
         try {
-            String question = objectMapper.readTree(raw).path("question").asText(null);
-            if (question == null || question.isBlank()) {
-                throw new IllegalArgumentException("缺少 question 字段");
+            JsonNode root = objectMapper.readTree(raw);
+            JsonNode questionNode = root != null && root.isObject() ? root.get("question") : null;
+            if (questionNode == null || !questionNode.isTextual() || questionNode.textValue().isBlank()) {
+                throw new IllegalArgumentException("question 必须是非空文本");
             }
-            return new QuestionPlan(question, true, "");
+            return new QuestionPlan(questionNode.textValue(), true, "");
         } catch (Exception ex) {
             return new QuestionPlan(fallbackQuestion(session), false,
                 "面试官输出无法解析（" + ex.getClass().getSimpleName() + "），使用本地兜底问题");

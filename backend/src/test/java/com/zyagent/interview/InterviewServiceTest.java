@@ -41,6 +41,83 @@ class InterviewServiceTest {
     }
 
     @Test
+    void nextQuestionReceivesTheJustEvaluatedTurnInHistory() {
+        FakeRepository repository = new FakeRepository();
+        List<List<InterviewTurn>> capturedHistories = new ArrayList<>();
+        InterviewAgent capturingAgent = new InterviewAgent() {
+            @Override
+            public String nextQuestion(InterviewSession session, List<InterviewTurn> history) {
+                capturedHistories.add(List.copyOf(history));
+                return "{\"question\":\"模型问题\"}";
+            }
+
+            @Override
+            public String evaluateAnswer(InterviewSession session, String question, String answer, boolean allowFollowUp) {
+                return "{\"technicalCorrectness\":4,\"completeness\":4,\"projectEvidence\":4,"
+                    + "\"expressionStructure\":4,\"explanations\":[\"清晰\"],\"evidence\":[],"
+                    + "\"followUp\":false,\"followUpQuestion\":null}";
+            }
+        };
+        InterviewService service = new InterviewService(repository, agentService(capturingAgent));
+        InterviewSession session = service.start("job-1", null, "项目深挖", "中等");
+        String answer = "我使用 Redis 完成了缓存优化";
+
+        service.submitTurn(session.id(), answer, "req-history");
+
+        assertEquals(2, capturedHistories.size(), "start question and next question both use the agent");
+        List<InterviewTurn> nextQuestionHistory = capturedHistories.get(1);
+        assertEquals(1, nextQuestionHistory.size());
+        InterviewTurn evaluatedTurn = nextQuestionHistory.get(0);
+        assertEquals(answer, evaluatedTurn.answer());
+        assertTrue(evaluatedTurn.evaluation().usable(), "usable evaluation is included in history");
+    }
+
+    @Test
+    void marksPersistedFallbackQuestionAtSessionStart() {
+        FakeRepository repository = new FakeRepository();
+        InterviewService service = new InterviewService(
+            repository,
+            agentService(agentWithQuestions("not json")));
+
+        InterviewSession session = service.start("job-1", null, "项目深挖", "中等");
+
+        String question = repository.turns(session.id()).get(0).question();
+        assertTrue(question.startsWith("【本地兜底问题】"));
+        assertTrue(question.contains("请介绍一个你主导的后端项目"));
+    }
+
+    @Test
+    void marksPersistedFallbackQuestionWhenGeneratingNextQuestion() {
+        FakeRepository repository = new FakeRepository();
+        InterviewService service = new InterviewService(
+            repository,
+            agentService(agentWithQuestions("{\"question\":\"模型首题\"}", "not json")));
+        InterviewSession session = service.start("job-1", null, "项目深挖", "中等");
+
+        service.submitTurn(session.id(), "回答", "req-next-fallback");
+
+        List<InterviewTurn> turns = repository.turns(session.id());
+        assertTrue(turns.get(0).question().startsWith("模型首题"));
+        assertTrue(turns.get(1).question().startsWith("【本地兜底问题】"));
+        assertTrue(turns.get(1).question().contains("请介绍一个你主导的后端项目"));
+    }
+
+    @Test
+    void leavesUsableModelQuestionsUnmarked() {
+        FakeRepository repository = new FakeRepository();
+        InterviewService service = new InterviewService(
+            repository,
+            agentService(agentWithQuestions("{\"question\":\"模型首题\"}", "{\"question\":\"模型次题\"}")));
+        InterviewSession session = service.start("job-1", null, "项目深挖", "中等");
+
+        service.submitTurn(session.id(), "回答", "req-model-questions");
+
+        List<InterviewTurn> turns = repository.turns(session.id());
+        assertEquals("模型首题", turns.get(0).question());
+        assertEquals("模型次题", turns.get(1).question());
+    }
+
+    @Test
     void duplicateRequestIdIsIdempotent() {
         FakeRepository repository = new FakeRepository();
         InterviewService service = new InterviewService(repository, agentService(new StubAgent()));
@@ -79,6 +156,24 @@ class InterviewServiceTest {
 
     private static InterviewAgentService agentService(InterviewAgent agent) {
         return new InterviewAgentService(agent, new ObjectMapper(), null);
+    }
+
+    private static InterviewAgent agentWithQuestions(String... outputs) {
+        return new InterviewAgent() {
+            private int questionIndex;
+
+            @Override
+            public String nextQuestion(InterviewSession session, List<InterviewTurn> history) {
+                return outputs[Math.min(questionIndex++, outputs.length - 1)];
+            }
+
+            @Override
+            public String evaluateAnswer(InterviewSession session, String question, String answer, boolean allowFollowUp) {
+                return "{\"technicalCorrectness\":4,\"completeness\":4,\"projectEvidence\":4,"
+                    + "\"expressionStructure\":4,\"explanations\":[\"结构清晰\"],\"evidence\":[],"
+                    + "\"followUp\":false,\"followUpQuestion\":null}";
+            }
+        };
     }
 
     /** 返回固定合法 JSON 的桩实现。 */
@@ -131,7 +226,7 @@ class InterviewServiceTest {
 
         @Override
         public List<InterviewTurn> findTurns(String sessionId) {
-            return turns(sessionId);
+            return List.copyOf(turns(sessionId));
         }
 
         private List<InterviewTurn> turns(String sessionId) {

@@ -57,7 +57,7 @@ public class InterviewService {
         InterviewSession started = created.start();
         repository.saveSession(started);
         QuestionPlan plan = agentService.nextQuestion(started, List.of());
-        repository.saveTurn(InterviewTurn.question(started.id(), 1, plan.question()));
+        repository.saveTurn(InterviewTurn.question(started.id(), 1, formatQuestion(plan)));
         return started;
     }
 
@@ -100,9 +100,14 @@ public class InterviewService {
         InterviewSession advanced = session.nextTurn();
         if (advanced.canContinue()) {
             repository.saveSession(advanced);
-            String nextQuestion = evaluated.hasFollowUp()
-                ? evaluated.followUpQuestion()
-                : agentService.nextQuestion(advanced, history).question();
+            String nextQuestion;
+            if (evaluated.hasFollowUp()) {
+                nextQuestion = evaluated.followUpQuestion();
+            } else {
+                List<InterviewTurn> currentHistory = repository.findTurns(sessionId);
+                QuestionPlan plan = agentService.nextQuestion(advanced, currentHistory);
+                nextQuestion = formatQuestion(plan);
+            }
             repository.saveTurn(InterviewTurn.question(sessionId, turnNo + 1, nextQuestion));
         } else {
             repository.saveSession(advanced.complete(summarize(advanced, repository.findTurns(sessionId))));
@@ -190,6 +195,10 @@ public class InterviewService {
         } catch (RuntimeException ex) {
             log.warn("面试评价生成画像建议失败：{}", ex.getClass().getSimpleName());
         }
+    }
+
+    private String formatQuestion(QuestionPlan plan) {
+        return plan.usable() ? plan.question() : "【本地兜底问题】" + plan.question();
     }
 
     private static String skillKeyFor(InterviewSession session) {

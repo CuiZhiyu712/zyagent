@@ -210,6 +210,24 @@ class InterviewAgentServiceTest {
         assertTrue(plan.note().contains("兜底"));
     }
 
+    @Test
+    void rejectsNonTextualOrMissingQuestionValues() {
+        for (String output : List.of(
+            "{\"question\":7}",
+            "{\"question\":true}",
+            "{\"question\":{\"text\":\"not a question node\"}}",
+            "{\"question\":[\"not a question node\"]}",
+            "{\"question\":null}",
+            "{\"question\":\"  \"}",
+            "{}"
+        )) {
+            QuestionPlan plan = serviceReturning(output).nextQuestion(session(), List.of());
+
+            assertFalse(plan.usable(), "question node must be a nonblank JSON string: " + output);
+            assertTrue(plan.note().contains("兜底"), "invalid question falls back safely");
+        }
+    }
+
     private static InterviewSession session() {
         return InterviewSession.create("owner-1", "job-1", null, "项目深挖", "中等");
     }
