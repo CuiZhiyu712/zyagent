@@ -68,24 +68,24 @@ public class LlmInterviewAgent implements InterviewAgent {
     public String nextQuestion(InterviewSession session, List<InterviewTurn> history) {
         requireAvailable();
         String userPrompt = render(questionUserPrompt, Map.of(
-            "interviewType", value(session.interviewType()),
-            "difficulty", value(session.difficulty()),
+            "interviewType", untrustedBlock("interview-type", session.interviewType()),
+            "difficulty", untrustedBlock("difficulty", session.difficulty()),
             "jobDescription", untrustedBlock("job-description", session.jdSnapshot()),
             "history", formatHistory(history)));
-        return chatClient.complete(questionSystemPrompt, userPrompt);
+        return chatClient.completeWithoutTools(questionSystemPrompt, userPrompt);
     }
 
     @Override
     public String evaluateAnswer(InterviewSession session, String question, String answer, boolean allowFollowUp) {
         requireAvailable();
         String userPrompt = render(evaluationUserPrompt, Map.of(
-            "interviewType", value(session.interviewType()),
-            "difficulty", value(session.difficulty()),
+            "interviewType", untrustedBlock("interview-type", session.interviewType()),
+            "difficulty", untrustedBlock("difficulty", session.difficulty()),
             "jobDescription", untrustedBlock("job-description", session.jdSnapshot()),
             "question", untrustedBlock("current-question", question),
             "answer", untrustedBlock("candidate-answer", answer),
             "allowFollowUp", Boolean.toString(allowFollowUp)));
-        return chatClient.complete(evaluationSystemPrompt, userPrompt);
+        return chatClient.completeWithoutTools(evaluationSystemPrompt, userPrompt);
     }
 
     private void requireAvailable() {

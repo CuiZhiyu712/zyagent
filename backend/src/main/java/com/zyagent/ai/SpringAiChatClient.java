@@ -27,6 +27,16 @@ class SpringAiChatClient implements AiChatClient {
     }
 
     @Override
+    public String completeWithoutTools(String systemPrompt, String userPrompt) {
+        String content = chatClient.prompt()
+            .system(systemPrompt == null ? "" : systemPrompt)
+            .user(userPrompt == null ? "" : userPrompt)
+            .call()
+            .content();
+        return content == null ? "" : content;
+    }
+
+    @Override
     public void stream(String systemPrompt, String userPrompt, TokenHandler handler) {
         chatClient.prompt()
             .system(systemPrompt == null ? "" : systemPrompt)
