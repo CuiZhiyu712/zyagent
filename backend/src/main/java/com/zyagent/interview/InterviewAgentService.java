@@ -129,6 +129,10 @@ public class InterviewAgentService {
         }
     }
 
+    public InterviewCapabilities capabilities() {
+        return new InterviewCapabilities(agent.provider(), agent.available(), agent.label());
+    }
+
     private static String unwrapSingleJsonFence(String raw) {
         String candidate = raw.strip();
         Matcher matcher = OUTER_JSON_FENCE.matcher(candidate);

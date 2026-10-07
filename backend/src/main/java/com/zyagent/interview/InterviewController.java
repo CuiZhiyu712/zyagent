@@ -15,9 +15,11 @@ import java.util.List;
 @RequestMapping("/api/interviews")
 public class InterviewController {
     private final InterviewService interviewService;
+    private final InterviewAgentService interviewAgentService;
 
-    public InterviewController(InterviewService interviewService) {
+    public InterviewController(InterviewService interviewService, InterviewAgentService interviewAgentService) {
         this.interviewService = interviewService;
+        this.interviewAgentService = interviewAgentService;
     }
 
     /** 创建会话并生成首题。 */
@@ -26,6 +28,11 @@ public class InterviewController {
         InterviewSession session = interviewService.start(
             request.jobId(), request.jdSnapshot(), request.interviewType(), request.difficulty());
         return ApiResponse.ok(details(session));
+    }
+
+    @GetMapping("/capabilities")
+    public ApiResponse<InterviewCapabilities> capabilities() {
+        return ApiResponse.ok(interviewAgentService.capabilities());
     }
 
     @GetMapping("/{sessionId}")
