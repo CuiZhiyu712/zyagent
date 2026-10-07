@@ -105,7 +105,7 @@ v1 采用确定性顺序协作，不额外启动多个进程，子 Agent 以服�
 ### 6. 简历匹配、模拟面试、复盘
 
 - 根据岗位 JD 与简历内容生成匹配报告。
-- 基于岗位和个人资料生成模拟面试问题。
+- 面试会使用所选岗位的 JD 快照、面试类型/难度和本次会话问答历史生成问题；当前不会自动以简历或用户画像为面试依据。
 - 根据面试复盘内容生成补强计划。
 - 相关结果支持自然语言总结和结构化输出解析。
 
@@ -211,6 +211,7 @@ ZYAGENT_RERANK_ENDPOINT=
 ZYAGENT_RERANK_TIMEOUT_MS=1500
 ZYAGENT_RERANK_MAX_CANDIDATES=30
 ZYAGENT_RERANK_MAX_CONTENT_CHARS=600
+ZYAGENT_INTERVIEW_PROVIDER=llm
 ZYAGENT_INTERVIEW_MAX_TURNS=8
 ZYAGENT_INTERVIEW_MAX_FOLLOW_UPS=1
 ZYAGENT_INTERVIEW_MODEL_TIMEOUT_MS=8000
@@ -220,16 +221,17 @@ STRUCTURED_OUTPUT_ENABLED=true
 
 说明：
 
-- `DEEPSEEK_API_KEY` 为空时，系统不会中断启动，会使用本地 fallback。
+- `DEEPSEEK_API_KEY` 为空时，系统不会中断启动；通用聊天仍可使用本地 fallback，LLM 面试官则会报告不可用，面试评价明确标记为不可用。
 - 当前默认聊天模型是 `deepseek-v4-pro`。DeepSeek 官方仍保留 `deepseek-chat` 兼容名，但该旧名会路由到 `deepseek-v4-flash` 非思考模式，并计划下线；本项目不再默认使用 `deepseek-chat`。
 - `EMBEDDING_PROVIDER=hash` 表示使用本地 hash embedding，方便无外部 embedding 服务时演示。
 - 如果使用 `docker-compose.yml` 默认 MySQL，`MYSQL_PASSWORD` 应为 `zyagent`。
 - `ZYAGENT_TASK_*` 控制 Agent 任务的执行上限和归属者：`MAX_PLAN_STEPS`/`MAX_TOOL_CALLS` 限制单次执行的步骤与工具调用数，`TOOL_TIMEOUT_MS` 是单工具超时，`MAX_RETRIES` 只对幂等只读工具生效。`STRICT_PERSISTENCE=false`（默认）时数据库不可用会降级为本地演示并在 SSE `status` 事件中标记 `persistence=memory`；设为 `true` 则任务无法落库时直接报错。
 - `ZYAGENT_RETRIEVAL_*` 控制 Hybrid 检索：`VECTOR_TOP_K`/`KEYWORD_TOP_K` 是两路各自召回数（默认 20），`FUSE_LIMIT` 是 RRF 融合后的候选上限（默认 30），`RERANK_LIMIT` 是最终注入提示词的引用数（默认 8）。
 - `ZYAGENT_RERANK_*` 是**可插拔**的二阶段重排：默认 `ENABLED=false`，此时使用本地 RRF 顺序并在检索追踪中标注 `rerank=rrf_fallback`（不声称 cross-encoder 已运行）。启用后需配置 `ENDPOINT`（外部 cross-encoder 服务），并受 `TIMEOUT_MS`/`MAX_CANDIDATES`/`MAX_CONTENT_CHARS` 约束；调用超时或异常会**自动降级**为 `rrf_fallback` 且标记 `status=failed`，不阻断回答。
-- `ZYAGENT_INTERVIEW_*` 控制模拟面试：`MAX_TURNS` 单会话最大轮数、`MAX_FOLLOW_UPS` 每题最大追问数、`MODEL_TIMEOUT_MS` 面试官模型调用超时。
-- 面试官默认使用**确定性规则实现** `RuleBasedInterviewAgent`（离线可跑、结果可复现）；`InterviewAgent` 是端口，可替换为 LLM 实现。模型输出无法解析或超时时会写入**有标识的** `usable=false` 评价（分数为 0 且带 note），不会被当作有效评分。
-- 面试评价完成后会生成**待审核**的画像建议（`sourceType=INTERVIEW`，`sourceId=会话#轮次`），不会自动写入画像。
+- `ZYAGENT_INTERVIEW_PROVIDER=llm|rule` 选择面试官，默认 `llm`。LLM 实现通过 UTF-8 classpath prompt resources 调用 DeepSeek，并把 JD 快照、面试类型/难度、问题与历史问答作为上下文；评价要求四项整数评分和回答原文的逐字证据，并由服务端严格校验 JSON 结构、评分范围、追问字段及证据引用。
+- `ZYAGENT_INTERVIEW_*` 还控制模拟面试上限：`MAX_TURNS` 是单会话最大轮数、`MAX_FOLLOW_UPS` 是每题最大追问数、`MODEL_TIMEOUT_MS` 是面试官模型调用超时。缺少 API key、模型调用失败/超时或评价输出不符合契约时，评价会保存为显式 `usable=false` fallback（分数不可信，附带安全说明）；这类评价不会计入有效评价平均分，也不会生成画像建议。有效评价仍按正常规则汇总。
+- 将 `ZYAGENT_INTERVIEW_PROVIDER` 设为 `rule` 会启用确定性的 **规则演示模式** `规则演示模式`；其分数由本地规则启发式产生，不是 AI 评分，仅适合离线演示。`llm` 与 `rule` 的运行状态可通过 `GET /api/interviews/capabilities` 查看；前端分别显示检测中、已配置/演示、未配置或状态未知，并在状态未知时提供重试。
+- 有效面试评价完成后会生成**待审核**的画像建议（`sourceType=INTERVIEW`，`sourceId=会话#轮次`），不会自动写入画像；不可用评价不产生建议。
 - 画像的熟练度（`level`）与**系统置信度**（`confidence`）分开记录；每次写入都会追加一条证据（`profile_skill_evidence`）与一条版本历史（`profile_skill_history`），支持拒绝、更正与删除。
 - 手动更正技能时可带 `expectedVersion` 做乐观并发校验，版本不一致返回 409，避免覆盖他人修改。
 - 岗位匹配会读取**已确认画像技能**并输出 `profileEvidence`（技能 ← 来源#引用，置信度）；画像不可用时退化为纯简历匹配。
@@ -317,6 +319,7 @@ Start-Process "npm.cmd" "run dev -- --host 127.0.0.1" -WorkingDirectory ".\front
 | `PUT` | `/api/job-sources/{id}` | 更新采集源 |
 | `POST` | `/api/job-sources/{id}/collect` | 采集单个来源 |
 | `POST` | `/api/jobs/{jobId}/match-resume` | 简历岗位匹配 |
+| `GET` | `/api/interviews/capabilities` | 查询当前面试官提供方与可用状态 |
 | `POST` | `/api/interviews` | 创建面试会话并生成首题 |
 | `POST` | `/api/interviews/{sessionId}/turns` | 提交当前轮回答（幂等 requestId） |
 | `POST` | `/api/interviews/{sessionId}/abort` | 中止面试会话 |
@@ -361,6 +364,8 @@ node --test src\chat\chatStream.test.mjs src\chat\markdownRenderer.test.mjs src\
 ```powershell
 .\.tools\apache-maven-3.9.9\bin\mvn.cmd -q -f backend\pom.xml test -Dtest=RagRetrievalEvaluationTest
 ```
+
+该评测使用仓库内固定的候选排名 fixture，衡量给定召回结果后的融合/排序行为；它不代表真实语料的向量或 SQL 召回质量。未接入外部 reranker 时只评估 `rrf_fallback`，不代表 cross-encoder 已运行或效果已验证。
 
 评测集与指标定义见 `docs/evaluation/README.md`。
 
@@ -446,7 +451,7 @@ BOSS 采集使用 Playwright Java 打开本地可视化浏览器。首次使用�
 
 ## 简历项目描述
 
-zyagent 是一个基于 Spring Boot、Spring AI、MySQL、Milvus、Redis 和 Vue 3 构建的个人知识成长与求职 Agent 平台，覆盖资料沉淀、岗位解析、简历匹配、模拟面试、复盘和学习补强。系统以 `SkillRouter` 与 `AgentOrchestrator` 负责路由和 Plan-Execute-Replan，使用 `Planner`、`Retriever`、`Evaluator`、`Reviewer` 子 Agent 共享中间产物完成协作；以 MySQL 持久化会话、消息、任务、步骤和工具调用状态，支持任务重试、幂等键、超时与资源上限。RAG 采用向量与关键词并行召回、RRF 融合去重和可插拔 reranker，外部重排失败时自动回退到本地 RRF。多轮面试会持久化回答、评价、追问和复盘结果，并生成可审核的画像技能建议；已确认画像会参与岗位匹配，并为学习计划提供缺口输入。前端通过 SSE 展示路由、计划、工具步骤、任务状态、RAG 引用和 multi-agent 协作链路。
+zyagent 是一个基于 Spring Boot、Spring AI、MySQL、Milvus、Redis 和 Vue 3 构建的个人知识成长与求职 Agent 平台，覆盖资料沉淀、岗位解析、简历匹配、模拟面试、复盘和学习补强。系统以 `SkillRouter` 与 `AgentOrchestrator` 负责路由和 Plan-Execute-Replan，使用 `Planner`、`Retriever`、`Evaluator`、`Reviewer` 子 Agent 共享中间产物完成协作；以 MySQL 持久化会话、消息、任务、步骤和工具调用状态，支持任务重试、幂等键、超时与资源上限。RAG 采用向量与关键词并行召回、RRF 融合去重；当前默认使用 `rrf_fallback`，外部 reranker 尚未接入。多轮面试会持久化回答、评价、追问和复盘结果；可用评价会生成待审核的画像技能建议，而无效评价不会进入平均分或建议流程。已确认画像会参与岗位匹配，并为学习计划提供缺口输入。前端通过 SSE 展示路由、计划、工具步骤、任务状态、RAG 引用和 multi-agent 协作链路。
 
 ## 注意事项
 

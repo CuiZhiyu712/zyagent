@@ -40,7 +40,7 @@
 - Modify: `backend/src/main/java/com/zyagent/interview/RuleBasedInterviewAgent.java`
 - Test: `backend/src/test/java/com/zyagent/interview/InterviewAgentServiceTest.java`
 
-- [ ] **Step 1: Write a failing provider-metadata test**
+- [x] **Step 1: Write a failing provider-metadata test**
 
 Add a test agent using the existing anonymous `InterviewAgent` and assert the interface defaults are stable:
 
@@ -67,7 +67,7 @@ mvn -Dtest=InterviewAgentServiceTest test
 
 Expected: compilation failure because provider metadata methods do not exist. If `mvn` is unavailable, record that environment blocker and use the first available Maven wrapper/executable before claiming the Java test passed.
 
-- [ ] **Step 3: Add provider metadata and conditional rule selection**
+- [x] **Step 3: Add provider metadata and conditional rule selection**
 
 Add default methods to `InterviewAgent`:
 
@@ -86,7 +86,7 @@ Annotate `RuleBasedInterviewAgent` with:
 
 Override its metadata with `rule_demo`, `true`, and `规则演示模式`.
 
-- [ ] **Step 4: Add configuration**
+- [x] **Step 4: Add configuration**
 
 Extend `ZyagentProperties.Interview` with `String provider` while keeping a three-argument convenience constructor for existing tests:
 
@@ -110,7 +110,7 @@ and `ZYAGENT_INTERVIEW_PROVIDER=llm` to `.env.example`.
 
 Run the same focused Maven command. Expected: provider-metadata tests pass.
 
-- [ ] **Step 6: Commit only Task 1 files**
+- [x] **Step 6: Commit only Task 1 files**
 
 ```powershell
 git add .env.example backend/src/main/java/com/zyagent/config/ZyagentProperties.java backend/src/main/java/com/zyagent/interview/InterviewAgent.java backend/src/main/java/com/zyagent/interview/RuleBasedInterviewAgent.java backend/src/main/resources/application.yml backend/src/test/java/com/zyagent/interview/InterviewAgentServiceTest.java
@@ -127,7 +127,7 @@ git commit -m "feat: configure interview agent provider"
 - Create: `backend/src/main/resources/prompts/interview-evaluation-user.st`
 - Create: `backend/src/test/java/com/zyagent/ai/LlmInterviewAgentTest.java`
 
-- [ ] **Step 1: Write failing tests for prompt composition and missing credentials**
+- [x] **Step 1: Write failing tests for prompt composition and missing credentials**
 
 Create a capturing `AiChatClient` in the `com.zyagent.ai` test package. Assert that:
 
@@ -149,7 +149,7 @@ mvn -Dtest=LlmInterviewAgentTest test
 
 Expected: compilation failure because `LlmInterviewAgent` does not exist.
 
-- [ ] **Step 3: Add the four prompt resources**
+- [x] **Step 3: Add the four prompt resources**
 
 Question system requirements:
 
@@ -170,7 +170,7 @@ Only output the documented JSON object; no Markdown fence.
 
 User templates must delimit JD, history, question, and answer with named boundary markers.
 
-- [ ] **Step 4: Implement `LlmInterviewAgent` minimally**
+- [x] **Step 4: Implement `LlmInterviewAgent` minimally**
 
 Use `@ConditionalOnProperty(prefix="zyagent.interview", name="provider", havingValue="llm", matchIfMissing=true)`. Inject `AiChatClient`, `${DEEPSEEK_API_KEY:}`, and the four classpath resources. Read resources as UTF-8 once during construction. Render named placeholders with Spring AI `PromptTemplate` or a small private deterministic renderer.
 
@@ -188,7 +188,7 @@ Before a call, throw `IllegalStateException("DEEPSEEK_API_KEY 未配置")` when 
 
 Run `mvn -Dtest=LlmInterviewAgentTest test`. Expected: all tests pass and the missing-key case records zero client invocations.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```powershell
 git add backend/src/main/java/com/zyagent/ai/LlmInterviewAgent.java backend/src/main/resources/prompts backend/src/test/java/com/zyagent/ai/LlmInterviewAgentTest.java
@@ -201,7 +201,7 @@ git commit -m "feat: add llm interview agent"
 - Modify: `backend/src/main/java/com/zyagent/interview/InterviewAgentService.java`
 - Modify: `backend/src/test/java/com/zyagent/interview/InterviewAgentServiceTest.java`
 
-- [ ] **Step 1: Add failing parser tests**
+- [x] **Step 1: Add failing parser tests**
 
 Add one focused test for each behavior:
 
@@ -225,7 +225,7 @@ mvn -Dtest=InterviewAgentServiceTest test
 
 Expected: the new strict-validation cases fail against the permissive `JsonNode.path(...).asInt()` implementation.
 
-- [ ] **Step 3: Implement strict parsing**
+- [x] **Step 3: Implement strict parsing**
 
 Add private helpers that:
 
@@ -245,7 +245,7 @@ mvn -Dtest=InterviewAgentServiceTest,InterviewServiceTest,InterviewTurnStateTest
 
 Expected: all selected tests pass.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```powershell
 git add backend/src/main/java/com/zyagent/interview/InterviewAgentService.java backend/src/test/java/com/zyagent/interview/InterviewAgentServiceTest.java
@@ -259,7 +259,7 @@ git commit -m "feat: validate interview evaluation evidence"
 - Modify: `backend/src/main/java/com/zyagent/interview/InterviewController.java`
 - Create: `backend/src/test/java/com/zyagent/interview/InterviewControllerCapabilitiesTest.java`
 
-- [ ] **Step 1: Write the failing capability contract test**
+- [x] **Step 1: Write the failing capability contract test**
 
 Construct `InterviewAgentService` with a stub agent reporting `llm`, unavailable, `DeepSeek AI 面试官`. Instantiate the controller with a minimal stub `InterviewService` only if necessary; preferably extract and test the returned public record directly through a package-visible controller method.
 
@@ -281,7 +281,7 @@ mvn -Dtest=InterviewControllerCapabilitiesTest test
 
 Expected: compilation failure because the endpoint/record does not exist.
 
-- [ ] **Step 3: Implement capability exposure**
+- [x] **Step 3: Implement capability exposure**
 
 Add to `InterviewAgentService`:
 
@@ -297,7 +297,7 @@ Expose `GET /api/interviews/capabilities` from `InterviewController` and return 
 
 Run `mvn -Dtest=InterviewControllerCapabilitiesTest,InterviewAgentServiceTest test`. Expected: all pass.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```powershell
 git add backend/src/main/java/com/zyagent/interview/InterviewAgentService.java backend/src/main/java/com/zyagent/interview/InterviewController.java backend/src/test/java/com/zyagent/interview/InterviewControllerCapabilitiesTest.java
@@ -312,7 +312,7 @@ git commit -m "feat: expose interview provider capability"
 - Modify: `frontend/src/api.js`
 - Modify: `frontend/src/App.vue`
 
-- [ ] **Step 1: Write a failing pure payload test**
+- [x] **Step 1: Write a failing pure payload test**
 
 ```javascript
 import test from 'node:test'
@@ -341,11 +341,11 @@ node --test src/interview/interviewPayload.test.mjs
 
 Expected: module-not-found failure.
 
-- [ ] **Step 3: Implement the minimal builder**
+- [x] **Step 3: Implement the minimal builder**
 
 Return only `jobId`, `jdSnapshot`, `interviewType`, and `difficulty`; copy no unrelated job fields.
 
-- [ ] **Step 4: Add capability API and UI state**
+- [x] **Step 4: Add capability API and UI state**
 
 Add `getInterviewCapabilities()` to `frontend/src/api.js`. In `App.vue`, load it with the other startup data, render its label beside the interview state, and use warning styling when unavailable or when `provider === 'rule_demo'`.
 
@@ -357,7 +357,7 @@ api.createInterview(buildInterviewPayload(interview, selectedJob.value))
 
 The unavailable label must be explicit, for example `DeepSeek AI 面试官 · 未配置`.
 
-- [ ] **Step 5: Run frontend tests and build**
+- [x] **Step 5: Run frontend tests and build**
 
 ```powershell
 node --test src/**/*.test.mjs
@@ -366,7 +366,7 @@ npm run build
 
 Expected: all Node tests pass, including the pre-existing trace-details test, and the production build exits 0. If the pre-existing test still fails, do not claim a clean suite; record it separately from this task.
 
-- [ ] **Step 6: Commit Task 5**
+- [x] **Step 6: Commit Task 5**
 
 ```powershell
 git add frontend/src/interview/interviewPayload.js frontend/src/interview/interviewPayload.test.mjs frontend/src/api.js frontend/src/App.vue
@@ -379,16 +379,16 @@ git commit -m "feat: show interview provider and send jd context"
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-10-07-evidence-driven-ai-interview-v1.md`
 
-- [ ] **Step 1: Update README truthfully**
+- [x] **Step 1: Update README truthfully**
 
 Document `ZYAGENT_INTERVIEW_PROVIDER=llm|rule`, state that `llm` is the default, explain that missing credentials yield unusable fallback evaluations, and label `rule` as deterministic demo mode. Do not claim resume-grounded interviews or real RAG evaluation.
 
-- [ ] **Step 2: Run complete verification**
+- [x] **Step 2: Run complete verification**
 
 Backend:
 
 ```powershell
-mvn test
+& ..\.tools\apache-maven-3.9.9\bin\mvn.cmd clean test
 ```
 
 Frontend:
@@ -400,7 +400,7 @@ npm run build
 
 Expected: zero test failures and both commands exit 0. If Maven remains unavailable, backend verification is explicitly incomplete and must not be reported as passing.
 
-- [ ] **Step 3: Check configuration and secret hygiene**
+- [x] **Step 3: Check configuration and secret hygiene**
 
 ```powershell
 git diff --check
@@ -410,7 +410,7 @@ git diff -- .env .env.example backend/src/main/resources/application.yml
 
 Expected: `.env` is not staged; `.env.example` contains no real credentials; no whitespace errors.
 
-- [ ] **Step 4: Mark completed plan checkboxes and commit docs**
+- [x] **Step 4: Mark completed plan checkboxes and commit docs**
 
 Update only checkboxes whose commands and expected outcomes were actually observed.
 
@@ -419,7 +419,7 @@ git add README.md docs/superpowers/plans/2026-10-07-evidence-driven-ai-interview
 git commit -m "docs: document evidence driven interview"
 ```
 
-- [ ] **Step 5: Report branch state without pushing unless requested**
+- [x] **Step 5: Report branch state without pushing unless requested**
 
 ```powershell
 git log --oneline --decorate -8
@@ -427,3 +427,10 @@ git status --short --branch
 ```
 
 Record remaining pre-existing dirty files separately. Do not push or open a PR without explicit user authorization.
+
+## Implementation Notes
+
+- The provider/LLM bootstrap landed as `e59ac41` (provider configuration), `bf30fe2` (optimization baseline needed for a clean checkout build), and `f0f9c7f` (LLM adapter and binding-safe constructor fix). Prompt, strict-evaluation, follow-up, and capability hardening followed in `fe6bba2`, `f9ec5e4`, `0989731`, `439cd66`, `b7336b6`, `facad52`, and `ff0a64b`.
+- Frontend JD/capability work landed in `92acbea` and `401559d`; truthful capability states and collapsed trace panels followed in `14ea72e` and `ae51b9e`.
+- Final verification on 2026-10-07: `mvn clean test` compiled from source and ran 117 tests (0 failures, 0 errors, 0 skipped); `node --test src/**/*.test.mjs` ran 42 tests (0 failures); `npm run build` exited 0. The frontend build reports existing VueUse annotation and large-chunk warnings. The bundled retrieval evaluation uses fixed candidate fixtures (`n=8`), not a real corpus; external reranking remains unconnected.
+- TDD RED and focused-GREEN checkboxes are left open where the exact planned command/output was not available in the recorded evidence; the full-suite results above establish final-state behavior, not historical RED execution.
