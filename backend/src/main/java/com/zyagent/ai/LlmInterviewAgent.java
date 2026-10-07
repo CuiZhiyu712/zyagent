@@ -1,6 +1,7 @@
 package com.zyagent.ai;
 
 import com.zyagent.interview.InterviewAgent;
+import com.zyagent.interview.InterviewEvaluation;
 import com.zyagent.interview.InterviewSession;
 import com.zyagent.interview.InterviewTurn;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,8 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(prefix = "zyagent.interview", name = "provider", havingValue = "llm", matchIfMissing = true)
 public class LlmInterviewAgent implements InterviewAgent {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z][a-zA-Z0-9]*)}}");
+    private static final Pattern UNTRUSTED_BOUNDARY = Pattern.compile(
+        "</?untrusted-[a-z0-9-]+\\b[^>]*>", Pattern.CASE_INSENSITIVE);
 
     private final AiChatClient chatClient;
     private final String apiKey;
@@ -76,6 +79,8 @@ public class LlmInterviewAgent implements InterviewAgent {
     public String evaluateAnswer(InterviewSession session, String question, String answer, boolean allowFollowUp) {
         requireAvailable();
         String userPrompt = render(evaluationUserPrompt, Map.of(
+            "interviewType", value(session.interviewType()),
+            "difficulty", value(session.difficulty()),
             "jobDescription", untrustedBlock("job-description", session.jdSnapshot()),
             "question", untrustedBlock("current-question", question),
             "answer", untrustedBlock("candidate-answer", answer),
@@ -104,13 +109,55 @@ public class LlmInterviewAgent implements InterviewAgent {
         return history.stream()
             .map(turn -> "第 " + turn.turnNo() + " 轮\n"
                 + "问题：\n" + untrustedBlock("prior-question", turn.question()) + "\n"
-                + "回答：\n" + untrustedBlock("prior-answer", turn.answer()))
+                + "回答：\n" + untrustedBlock("prior-answer", turn.answer()) + "\n"
+                + "评价摘要：\n" + untrustedBlock("prior-evaluation", evaluationSummary(turn.evaluation())))
             .collect(Collectors.joining("\n\n"));
+    }
+
+    private static String evaluationSummary(InterviewEvaluation evaluation) {
+        if (evaluation == null || !evaluation.usable()) {
+            return "无可用评价";
+        }
+
+        String[] dimensions = {"技术正确性", "完整性", "项目证据", "表达结构"};
+        int[] scores = {evaluation.technicalCorrectness(), evaluation.completeness(),
+            evaluation.projectEvidence(), evaluation.expressionStructure()};
+        List<String> explanations = evaluation.explanations();
+        StringBuilder summary = new StringBuilder();
+        for (int index = 0; index < dimensions.length; index++) {
+            if (index > 0) {
+                summary.append('\n');
+            }
+            String explanation = index < explanations.size() ? explanations.get(index).strip() : "";
+            String fullLabel = dimensions[index] + "：";
+            if (explanation.startsWith(fullLabel)) {
+                explanation = explanation.substring(fullLabel.length()).strip();
+            } else if (explanation.startsWith(dimensions[index] + ":")) {
+                explanation = explanation.substring((dimensions[index] + ":").length()).strip();
+            }
+            if (explanation.isEmpty()) {
+                explanation = "无说明";
+            }
+            summary.append(dimensions[index]).append("：")
+                .append(scores[index]).append("/5；").append(explanation);
+        }
+        return summary.toString();
     }
 
     private static String untrustedBlock(String label, String content) {
         String closingTag = "</untrusted-" + label + ">";
-        String safeContent = value(content).replace(closingTag, "&lt;/untrusted-" + label + "&gt;");
+        String safeContent = value(content);
+        if ("job-description".equals(label) && safeContent.isBlank()) {
+            safeContent = "未提供";
+        }
+        Matcher matcher = UNTRUSTED_BOUNDARY.matcher(safeContent);
+        StringBuffer sanitized = new StringBuffer();
+        while (matcher.find()) {
+            String escapedBoundary = matcher.group().replace("<", "&lt;").replace(">", "&gt;");
+            matcher.appendReplacement(sanitized, Matcher.quoteReplacement(escapedBoundary));
+        }
+        matcher.appendTail(sanitized);
+        safeContent = sanitized.toString();
         return "<untrusted-" + label + ">\n" + safeContent + "\n" + closingTag;
     }
 
