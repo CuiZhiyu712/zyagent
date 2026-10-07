@@ -65,6 +65,31 @@ zyagent:
       max-messages: ${CHAT_MEMORY_MAX_MESSAGES:6}
   agent:
     replan-max-attempts: ${AGENT_REPLAN_MAX_ATTEMPTS:1}
+  task:
+    owner-id: ${ZYAGENT_TASK_OWNER_ID:local-user}
+    max-plan-steps: ${ZYAGENT_TASK_MAX_PLAN_STEPS:12}
+    max-tool-calls: ${ZYAGENT_TASK_MAX_TOOL_CALLS:8}
+    timeout-ms: ${ZYAGENT_TASK_TIMEOUT_MS:120000}
+    tool-timeout-ms: ${ZYAGENT_TASK_TOOL_TIMEOUT_MS:15000}
+    max-retries: ${ZYAGENT_TASK_MAX_RETRIES:1}
+    strict-persistence: ${ZYAGENT_TASK_STRICT_PERSISTENCE:false}
+  retrieval:
+    vector-top-k: ${ZYAGENT_RETRIEVAL_VECTOR_TOP_K:20}
+    keyword-top-k: ${ZYAGENT_RETRIEVAL_KEYWORD_TOP_K:20}
+    fuse-limit: ${ZYAGENT_RETRIEVAL_FUSE_LIMIT:30}
+    rank-constant: ${ZYAGENT_RETRIEVAL_RANK_CONSTANT:60}
+    rerank-limit: ${ZYAGENT_RETRIEVAL_RERANK_LIMIT:8}
+    rerank:
+      enabled: ${ZYAGENT_RERANK_ENABLED:false}
+      endpoint: ${ZYAGENT_RERANK_ENDPOINT:}
+      timeout-ms: ${ZYAGENT_RERANK_TIMEOUT_MS:1500}
+      max-candidates: ${ZYAGENT_RERANK_MAX_CANDIDATES:30}
+      max-content-chars: ${ZYAGENT_RERANK_MAX_CONTENT_CHARS:600}
+  interview:
+    provider: ${ZYAGENT_INTERVIEW_PROVIDER:llm}
+    max-turns: ${ZYAGENT_INTERVIEW_MAX_TURNS:8}
+    max-follow-ups: ${ZYAGENT_INTERVIEW_MAX_FOLLOW_UPS:1}
+    model-timeout-ms: ${ZYAGENT_INTERVIEW_MODEL_TIMEOUT_MS:8000}
   mcp:
     enabled: ${ZYAGENT_MCP_ENABLED:true}
   structured-output:
