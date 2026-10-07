@@ -234,9 +234,12 @@
                 <span>创建模拟面试</span>
                 <div>
                   <el-tag v-if="interviewSession" effect="plain">{{ interviewSession.state }}</el-tag>
-                  <el-tag :type="interviewCapabilityWarning ? 'warning' : undefined" effect="plain">
-                    {{ interviewCapabilityLabel }}
+                  <el-tag :type="interviewCapabilityDisplay.warning ? 'warning' : undefined" effect="plain">
+                    {{ interviewCapabilityDisplay.label }}
                   </el-tag>
+                  <el-button v-if="interviewCapabilityDisplay.retry" link type="primary" size="small" @click="refreshInterviewCapabilities">
+                    重试
+                  </el-button>
                 </div>
               </div>
             </template>
@@ -419,6 +422,7 @@ import { api } from './api'
 import ChatWorkspace from './components/chat/ChatWorkspace.vue'
 import { extractDroppedFile, knowledgeTypeLabel } from './chat/uploadActions'
 import { buildInterviewPayload, findInterviewJob } from './interview/interviewPayload.js'
+import { formatInterviewCapabilityState } from './interview/interviewCapabilityState.js'
 
 const active = ref('dashboard')
 const documents = ref([])
@@ -438,7 +442,7 @@ const interviewSession = ref(null)
 const interviewTurns = ref([])
 const interviewAnswer = ref('')
 const interviewSessions = ref([])
-const interviewCapabilities = ref({ provider: 'llm', available: false, label: 'AI 面试官' })
+const interviewCapabilityState = ref({ status: 'loading' })
 const skillLevels = ['AWARENESS', 'BASIC', 'WORKING', 'PROFICIENT']
 const skillForm = reactive({ skillKey: '', level: 'WORKING', evidence: '', expectedVersion: null })
 const expandedEvidence = reactive({})
@@ -452,15 +456,9 @@ const interviewSelectedJob = computed(() => findInterviewJob(jobs.value, intervi
 const canAnswer = computed(() =>
   interviewSession.value?.state === 'IN_PROGRESS' && Boolean(currentQuestion.value)
 )
-const interviewCapabilityWarning = computed(() =>
-  !interviewCapabilities.value.available || interviewCapabilities.value.provider === 'rule_demo'
+const interviewCapabilityDisplay = computed(() =>
+  formatInterviewCapabilityState(interviewCapabilityState.value)
 )
-const interviewCapabilityLabel = computed(() => {
-  const capability = interviewCapabilities.value
-  if (!capability.available) return `${capability.label || 'AI 面试官'} · 未配置`
-  if (capability.provider === 'rule_demo') return `${capability.label || '规则演示模式'} · 演示模式`
-  return capability.label || 'AI 面试官'
-})
 const profileSkills = ref([])
 const profileSuggestions = ref([])
 const reviewText = ref('')
@@ -784,16 +782,18 @@ async function refreshInterviewSessions() {
 }
 
 async function refreshInterviewCapabilities() {
+  interviewCapabilityState.value = { status: 'loading' }
   try {
     const capability = await api.getInterviewCapabilities()
-    if (!capability) return
-    interviewCapabilities.value = {
-      provider: capability.provider || 'llm',
-      available: capability.available === true,
-      label: capability.label || 'AI 面试官'
+    if (!capability || typeof capability.provider !== 'string' || !capability.provider.trim()
+      || typeof capability.available !== 'boolean' || typeof capability.label !== 'string'
+      || !capability.label.trim()) {
+      interviewCapabilityState.value = { status: 'error' }
+      return
     }
+    interviewCapabilityState.value = { status: 'ready', capability }
   } catch {
-    // Keep the safe unavailable default without blocking other panels.
+    interviewCapabilityState.value = { status: 'error' }
   }
 }
 
