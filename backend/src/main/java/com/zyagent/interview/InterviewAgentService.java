@@ -1,6 +1,7 @@
 package com.zyagent.interview;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zyagent.config.ZyagentProperties;
 import jakarta.annotation.PreDestroy;
@@ -17,6 +18,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 面试官 Agent 的解析层：调用 {@link InterviewAgent}，解析 JSON，做校验、超时与降级。
@@ -26,6 +29,8 @@ import java.util.function.Supplier;
 @Service
 public class InterviewAgentService {
     private static final Logger log = LoggerFactory.getLogger(InterviewAgentService.class);
+    private static final Pattern OUTER_JSON_FENCE = Pattern.compile(
+        "\\A```json[ \\t]*\\r?\\n(.*?)\\r?\\n```\\z", Pattern.DOTALL);
 
     private final InterviewAgent agent;
     private final ObjectMapper objectMapper;
@@ -72,28 +77,94 @@ public class InterviewAgentService {
             return unusableAssessment("评价模型调用超时或不可用，本轮评价不可用");
         }
         try {
-            JsonNode node = objectMapper.readTree(raw);
-            if (!node.has("technicalCorrectness")) {
-                throw new IllegalArgumentException("缺少评分字段");
+            String json = unwrapSingleJsonFence(raw);
+            JsonNode node = objectMapper.reader()
+                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .readTree(json);
+            if (node == null || !node.isObject()) {
+                throw new EvaluationValidationException("JSON 内容必须是对象");
             }
+            int technicalCorrectness = requiredScore(node, "technicalCorrectness", "技术正确性");
+            int completeness = requiredScore(node, "completeness", "完整性");
+            int projectEvidence = requiredScore(node, "projectEvidence", "项目证据");
+            int expressionStructure = requiredScore(node, "expressionStructure", "表达结构");
+            List<String> explanations = requiredTextArray(node, "explanations", "解释");
+            List<String> evidence = requiredTextArray(node, "evidence", "证据");
+            validateEvidence(evidence, answer);
+
+            boolean requestedFollowUp = node.path("followUp").asBoolean(false);
+            String requestedFollowUpQuestion = node.path("followUpQuestion").asText(null);
+            if (requestedFollowUp && (requestedFollowUpQuestion == null || requestedFollowUpQuestion.isBlank())) {
+                throw new EvaluationValidationException("追问必须包含非空追问问题");
+            }
+
             InterviewEvaluation evaluation = new InterviewEvaluation(
-                node.path("technicalCorrectness").asInt(),
-                node.path("completeness").asInt(),
-                node.path("projectEvidence").asInt(),
-                node.path("expressionStructure").asInt(),
-                toStringList(node.path("explanations")),
-                toStringList(node.path("evidence")),
+                technicalCorrectness,
+                completeness,
+                projectEvidence,
+                expressionStructure,
+                explanations,
+                evidence,
                 true,
                 "");
-            boolean followUp = allowFollowUp && node.path("followUp").asBoolean(false);
-            String followUpQuestion = followUp ? node.path("followUpQuestion").asText(null) : null;
-            if (followUpQuestion == null || followUpQuestion.isBlank()) {
-                followUp = false;
-                followUpQuestion = null;
-            }
+            boolean followUp = allowFollowUp && requestedFollowUp;
+            String followUpQuestion = followUp ? requestedFollowUpQuestion : null;
             return new AnswerAssessment(evaluation, followUp, followUpQuestion, true, "");
         } catch (Exception ex) {
-            return unusableAssessment("评价输出无法解析（" + ex.getClass().getSimpleName() + "），本轮评价不可用");
+            String reason = ex instanceof EvaluationValidationException validationException
+                ? validationException.getMessage()
+                : "JSON 格式错误";
+            return unusableAssessment("评价输出无法解析（" + reason + "），本轮评价不可用");
+        }
+    }
+
+    private static String unwrapSingleJsonFence(String raw) {
+        String candidate = raw.strip();
+        Matcher matcher = OUTER_JSON_FENCE.matcher(candidate);
+        return matcher.matches() ? matcher.group(1) : candidate;
+    }
+
+    private static int requiredScore(JsonNode node, String field, String label) {
+        JsonNode value = node.get(field);
+        if (value == null) {
+            throw new EvaluationValidationException("缺少评分字段：" + label);
+        }
+        if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+            throw new EvaluationValidationException("评分必须为整数：" + label);
+        }
+        int score = value.intValue();
+        if (score < 0 || score > 5) {
+            throw new EvaluationValidationException("评分必须在 0 到 5 之间：" + label);
+        }
+        return score;
+    }
+
+    private static List<String> requiredTextArray(JsonNode node, String field, String label) {
+        JsonNode values = node.get(field);
+        if (values == null || !values.isArray()) {
+            throw new EvaluationValidationException(label + "必须是字符串数组");
+        }
+        List<String> result = new ArrayList<>(values.size());
+        for (JsonNode value : values) {
+            if (!value.isTextual()) {
+                throw new EvaluationValidationException(label + "数组项必须是文本");
+            }
+            result.add(value.textValue());
+        }
+        return result;
+    }
+
+    private static void validateEvidence(List<String> evidence, String answer) {
+        for (String item : evidence) {
+            if (!item.isBlank() && (answer == null || !answer.contains(item))) {
+                throw new EvaluationValidationException("证据必须逐字引用回答原文");
+            }
+        }
+    }
+
+    private static final class EvaluationValidationException extends IllegalArgumentException {
+        private EvaluationValidationException(String message) {
+            super(message);
         }
     }
 
@@ -109,14 +180,6 @@ public class InterviewAgentService {
             case "Java 基础" -> "请解释一个你熟悉的 Java 核心机制及其适用场景。";
             default -> "请介绍一段与目标岗位最相关的经历。";
         };
-    }
-
-    private List<String> toStringList(JsonNode node) {
-        List<String> values = new ArrayList<>();
-        if (node != null && node.isArray()) {
-            node.forEach(item -> values.add(item.asText()));
-        }
-        return values;
     }
 
     private String callWithTimeout(Supplier<String> call) {

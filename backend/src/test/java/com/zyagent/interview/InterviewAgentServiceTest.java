@@ -1,6 +1,7 @@
 package com.zyagent.interview;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,6 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InterviewAgentServiceTest {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final List<String> SCORE_FIELDS = List.of(
+        "technicalCorrectness", "completeness", "projectEvidence", "expressionStructure");
+    private static final String VALID_EVALUATION_JSON =
+        "{\"technicalCorrectness\":4,\"completeness\":3,\"projectEvidence\":2,"
+            + "\"expressionStructure\":5,\"explanations\":[\"ok\"],\"evidence\":[],"
+            + "\"followUp\":false,\"followUpQuestion\":null}";
+
     @Test
     void exposesProviderMetadataForTestAndRuleBasedAgents() {
         InterviewAgent testAgent = agentReturning("{}");
@@ -25,17 +34,16 @@ class InterviewAgentServiceTest {
     }
 
     @Test
-    void parsesValidEvaluation() {
+    void parsesValidEvaluation() throws Exception {
         InterviewAgentService service = serviceReturning(
-            "{\"technicalCorrectness\":4,\"completeness\":3,\"projectEvidence\":2,\"expressionStructure\":5,"
-                + "\"explanations\":[\"ok\"],\"evidence\":[\"proj-1\"],\"followUp\":false,\"followUpQuestion\":null}");
+            withJsonField(VALID_EVALUATION_JSON, "evidence", "[\"Redis 缓存\"]"));
 
-        AnswerAssessment assessment = service.assess(session(), "q", "a", true);
+        AnswerAssessment assessment = service.assess(session(), "q", "我使用 Redis 缓存热点数据", true);
 
         assertTrue(assessment.usable());
         assertEquals(4, assessment.evaluation().technicalCorrectness());
         assertEquals(2, assessment.evaluation().projectEvidence());
-        assertEquals(List.of("proj-1"), assessment.evaluation().evidenceRefs());
+        assertEquals(List.of("Redis 缓存"), assessment.evaluation().evidenceRefs());
     }
 
     @Test
@@ -58,6 +66,102 @@ class InterviewAgentServiceTest {
 
         assertFalse(assessment.usable());
         assertTrue(assessment.note().contains("无法解析"));
+    }
+
+    @Test
+    void rejectsMissingAnyScore() throws Exception {
+        for (String scoreField : SCORE_FIELDS) {
+            assertUnusable(withoutJsonField(VALID_EVALUATION_JSON, scoreField), "candidate answer", "评分");
+        }
+    }
+
+    @Test
+    void rejectsNonIntegralScore() throws Exception {
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "technicalCorrectness", "\"4\""),
+            "candidate answer", "评分");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "completeness", "3.5"),
+            "candidate answer", "评分");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "projectEvidence", "true"),
+            "candidate answer", "评分");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "expressionStructure", "false"),
+            "candidate answer", "评分");
+    }
+
+    @Test
+    void rejectsScoreOutsideZeroToFive() throws Exception {
+        for (String scoreField : SCORE_FIELDS) {
+            assertUnusable(withJsonField(VALID_EVALUATION_JSON, scoreField, "-1"), "candidate answer", "评分");
+            assertUnusable(withJsonField(VALID_EVALUATION_JSON, scoreField, "6"), "candidate answer", "评分");
+        }
+    }
+
+    @Test
+    void acceptsSingleOuterJsonFence() {
+        String fenced = "```json\n" + VALID_EVALUATION_JSON + "\n```";
+
+        AnswerAssessment assessment = assessmentFor(fenced, "candidate answer");
+
+        assertTrue(assessment.usable());
+        assertTrue(assessment.evaluation().usable());
+    }
+
+    @Test
+    void rejectsMultipleOrTrailingJsonFences() {
+        String nestedFence = "```json\n```json\n" + VALID_EVALUATION_JSON + "\n```\n```";
+        String repeatedFence = "```json\n" + VALID_EVALUATION_JSON + "\n```\n```json\n{}\n```";
+
+        assertUnusable(nestedFence, "candidate answer", "JSON");
+        assertUnusable(repeatedFence, "candidate answer", "JSON");
+    }
+
+    @Test
+    void rejectsTrailingJsonTokens() {
+        assertUnusable(VALID_EVALUATION_JSON + " {}", "candidate answer", "JSON");
+    }
+
+    @Test
+    void rejectsEvidenceNotQuotedFromAnswer() throws Exception {
+        String payload = withJsonField(VALID_EVALUATION_JSON, "evidence", "[\"QPS 提升 80%\"]");
+
+        assertUnusable(payload, "我使用 Redis 缓存热点数据", "证据");
+    }
+
+    @Test
+    void rejectsEvidenceWithCaseOrWhitespaceDrift() throws Exception {
+        String answer = "我使用 Redis 缓存热点数据";
+        for (String evidence : List.of("redis 缓存", "Redis  缓存")) {
+            String payload = withJsonField(VALID_EVALUATION_JSON, "evidence", JSON.writeValueAsString(List.of(evidence)));
+            assertUnusable(payload, answer, "证据");
+        }
+    }
+
+    @Test
+    void rejectsNonArrayExplanations() throws Exception {
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "explanations", "\"ok\""),
+            "candidate answer", "解释");
+    }
+
+    @Test
+    void rejectsNonArrayEvidence() throws Exception {
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "evidence", "\"Redis 缓存\""),
+            "我使用 Redis 缓存热点数据", "证据");
+    }
+
+    @Test
+    void rejectsNonTextArrayItemsForExplanationsAndEvidence() throws Exception {
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "explanations", "[\"ok\", 5]"),
+            "我使用 Redis 缓存热点数据", "解释");
+        assertUnusable(withJsonField(VALID_EVALUATION_JSON, "evidence", "[\"Redis\", false]"),
+            "我使用 Redis 缓存热点数据", "证据");
+    }
+
+    @Test
+    void rejectsFollowUpWithoutQuestion() throws Exception {
+        String payload = withJsonField(VALID_EVALUATION_JSON, "followUp", "true");
+        assertUnusable(payload, "candidate answer", "追问");
+
+        String blankQuestion = withJsonField(payload, "followUpQuestion", "\"  \"");
+        assertUnusable(blankQuestion, "candidate answer", "追问");
     }
 
     @Test
@@ -91,6 +195,30 @@ class InterviewAgentServiceTest {
 
     private static InterviewAgentService serviceReturning(String payload) {
         return new InterviewAgentService(agentReturning(payload), new ObjectMapper(), null);
+    }
+
+    private static AnswerAssessment assessmentFor(String payload, String answer) {
+        return serviceReturning(payload).assess(session(), "q", answer, true);
+    }
+
+    private static void assertUnusable(String payload, String answer, String reasonCategory) {
+        AnswerAssessment assessment = assessmentFor(payload, answer);
+
+        assertFalse(assessment.usable(), "invalid evaluation must not be usable");
+        assertFalse(assessment.evaluation().usable(), "invalid evaluation value must be flagged unusable");
+        assertTrue(assessment.note().contains(reasonCategory), "fallback note retains reason category");
+    }
+
+    private static String withJsonField(String payload, String field, String jsonValue) throws Exception {
+        ObjectNode root = (ObjectNode) JSON.readTree(payload);
+        root.set(field, JSON.readTree(jsonValue));
+        return JSON.writeValueAsString(root);
+    }
+
+    private static String withoutJsonField(String payload, String field) throws Exception {
+        ObjectNode root = (ObjectNode) JSON.readTree(payload);
+        root.remove(field);
+        return JSON.writeValueAsString(root);
     }
 
     private static InterviewAgent agentReturning(String payload) {
