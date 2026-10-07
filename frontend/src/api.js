@@ -42,6 +42,7 @@ export const api = {
   listInterviews: (page = 0, size = 20) => fetch(`/api/interviews?page=${page}&size=${size}`).then(parse),
   answerInterview: (sessionId, answer) => fetch(`/api/interviews/${sessionId}/answer`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ answer }) }).then(parse),
   completeInterview: sessionId => fetch(`/api/interviews/${sessionId}/complete`, { method: 'POST' }).then(parse),
+  getInterviewCapabilities: () => fetch('/api/interviews/capabilities').then(parse),
   getProfile: () => fetch('/api/profile').then(parse),
   listProfileSkills: () => fetch('/api/profile/skills').then(parse),
   upsertProfileSkill: (skillKey, payload) => fetch(`/api/profile/skills/${encodeURIComponent(skillKey)}`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(payload) }).then(parse),
