@@ -1,6 +1,7 @@
 package com.zyagent.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "zyagent")
 public record ZyagentProperties(
@@ -85,6 +86,10 @@ public record ZyagentProperties(
 
     /** 模拟面试：每会话最大轮数、每题最大追问数与模型调用超时。 */
     public record Interview(int maxTurns, int maxFollowUps, long modelTimeoutMs, String provider) {
+        @ConstructorBinding
+        public Interview {
+        }
+
         public Interview(int maxTurns, int maxFollowUps, long modelTimeoutMs) {
             this(maxTurns, maxFollowUps, modelTimeoutMs, "llm");
         }
